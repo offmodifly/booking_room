@@ -1,0 +1,16 @@
+# ไฟล์ที่ผู้ใช้อัปโหลด (เก็บเฉพาะโครงโฟลเดอร์)
+uploads/buildings/*
+uploads/rooms/*
+uploads/signatures/*
+uploads/avatars/*
+uploads/branding/*
+!uploads/**/.gitkeep
+
+# ไฟล์สำรองข้อมูล (มีข้อมูลผู้ใช้/การจอง) — เก็บเฉพาะ .htaccess
+backups/*
+!backups/.htaccess
+
+# ค่าตั้งระบบจริง (มี APP_SECRET) — ใช้ config/config.example.php เป็นแม่แบบ
+config/config.php
+
+install/install.lock
