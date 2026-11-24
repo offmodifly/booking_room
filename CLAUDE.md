@@ -34,10 +34,11 @@
 - Bookings go through a 4-step signature chain (`SIGN_STEPS`): requester → building_head → deputy_director → director.
   - Each signature hashes the previous one (`signature_hash`).
   - Statuses: pending → head_approved → deputy_approved → signed/approved. `ACTIVE_SQL` = statuses that occupy a room.
-- 3D models are generated from data, not photos. Photos are optional textures.
-  - `buildings.style` (JSON) is normalised by `building_style()`, and the config is built by `building_3d_cfg()`.
+- 3D models are generated from data, not photos.
+  - `buildings.style` (JSON) is normalised by `building_style()`, and the config is built by `building_3d_cfg()`. Building photos are still mapped onto faces with `assign_faces()`.
   - `rooms.layout` (JSON) holds stage, table type and count, chairs ≤ 2000, computers, speakers, mics and display. It is normalised by `room_layout()`.
-  - Photos map to faces with `assign_faces()`.
+  - Room models never use photos: `room_3d_cfg()` always returns `images: []`. Room photos are gallery-only, resized client-side by `assets/js/media.js` (1920px JPG) and again server-side.
+- Bookings: `title` is labelled "มีความประสงค์ขอใช้สถานที่เพื่อ". `bookings.equip` (JSON) holds the requested equipment from `BOOKING_EQUIPMENT`, normalised by `booking_equipment()`. It is part of the signed data (appended to the HMAC input only when present).
 - A room with bookings cannot be deleted (guard in `admin/rooms.php`). Use status "ไม่ว่าง" instead, or clear its bookings after a `db_backup()`.
 - Log every admin action with `log_action(type, message)`. Types are listed in `LOG_ACTIONS`.
 

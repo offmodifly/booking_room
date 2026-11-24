@@ -410,6 +410,15 @@ function building_3d_cfg(array $b, array $images = []): array
         'images' => assign_faces($images, 'face', ['front', 'right', 'back', 'left']),
     ];
 }
+/** ค่าห้องประชุมสำหรับโมเดล 3D — ปั้นจากลักษณะห้องล้วน (ไม่นำรูปถ่ายมาเคลือบผนัง · รูปแสดงในแกลเลอรีเท่านั้น) */
+function room_3d_cfg(array $r): array
+{
+    return [
+        'width' => (float)$r['width_m'], 'depth' => (float)$r['depth_m'], 'height' => (float)$r['height_m'], 'color' => $r['color'],
+        'layout' => room_layout($r['layout'] ?? null, (int)$r['capacity'], (string)($r['equipment'] ?? '')),
+        'images' => [],
+    ];
+}
 function assign_faces(array $images, string $col, array $order): array
 {
     $map = []; $rest = [];
@@ -430,6 +439,76 @@ function role_sign_step(?string $role): ?string
     foreach (SIGN_STEPS as $k => $s) if ($s['role'] && $s['role'] === $role) return $k;
     return null;
 }
+// ---------------------------------------------------------------- อุปกรณ์ที่ขอให้จัด (แบบฟอร์มขอใช้สถานที่ ข้อ 2)
+/** key => [ป้าย, ชนิด (qty = จำนวน · text = ระบุข้อความ · check = ติ๊กอย่างเดียว), หน่วย/คำนำหน้าช่อง, ไอคอน] */
+const BOOKING_EQUIPMENT = [
+    'reg_table'     => ['โต๊ะลงทะเบียน',   'qty',   'ตัว', 'bi-clipboard-check'],
+    'sofa'          => ['ชุดรับแขก',        'check', '',    'bi-cup-hot'],
+    'plastic_chair' => ['เก้าอี้พลาสติก',   'qty',   'ตัว', 'bi-person-workspace'],
+    'altar'         => ['โต๊ะหมู่บูชา',     'check', '',    'bi-flower1'],
+    'podium'        => ['โพเดียม',          'qty',   'ตัว', 'bi-easel3'],
+    'flowers'       => ['ดอกไม้',           'qty',   'ชุด', 'bi-flower3'],
+    'stage'         => ['เวที',             'text',  'ขนาด', 'bi-aspect-ratio'],
+    'sound'         => ['เครื่องขยายเสียง', 'text',  'รายละเอียด', 'bi-speaker'],
+    'other'         => ['อื่นๆ',            'text',  'ระบุ', 'bi-three-dots'],
+];
+/** ทำความสะอาดค่าอุปกรณ์จากฟอร์ม/ฐานข้อมูล → ['need' => bool, 'items' => [key => จำนวน|ข้อความ|true]] */
+function booking_equipment(string|array|null $src): array
+{
+    $in = is_array($src) ? $src : (json_decode((string)$src, true) ?: []);
+    $items = [];
+    $need = filter_var($in['need'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    if ($need) {
+        foreach (BOOKING_EQUIPMENT as $k => [, $type]) {
+            $on = filter_var($in['on'][$k] ?? (isset($in['items'][$k]) ? true : false), FILTER_VALIDATE_BOOLEAN);
+            if (!$on) continue;
+            $v = $in['val'][$k] ?? $in['items'][$k] ?? '';
+            $items[$k] = match ($type) {
+                'qty' => max(0, min(9999, (int)$v)),
+                'text' => mb_substr(trim((string)$v), 0, 150),
+                default => true,
+            };
+        }
+    }
+    return ['need' => $need && $items, 'items' => $items];
+}
+/** แปลงเป็นรายการข้อความภาษาไทย เช่น ['โต๊ะลงทะเบียน 2 ตัว', 'เวที ขนาด 4×6 ม.'] */
+function booking_equipment_lines(string|array|null $src): array
+{
+    $eq = booking_equipment($src);
+    $out = [];
+    foreach ($eq['items'] as $k => $v) {
+        [$label, $type, $unit] = BOOKING_EQUIPMENT[$k];
+        $out[] = match ($type) {
+            'qty' => $label . ($v ? " $v $unit" : ''),
+            'text' => $v === '' ? $label : match ($k) { 'stage' => "เวที ขนาด $v", 'other' => "อื่นๆ: $v", default => "$label ($v)" },
+            default => $label,
+        };
+    }
+    return $out;
+}
+/** ช่องกรอกอุปกรณ์ (ใช้ทั้งหน้าขอใช้ห้องและหน้า admin) — $old = ค่าที่ส่งมา (กรณีฟอร์มผิดพลาด) */
+function booking_equipment_fields(array $old = [], string $idp = 'eq'): string
+{
+    $need = filter_var($old['need'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $h = '<div class="eq-box" data-eq>';
+    $h .= '<div class="eq-need">'
+        . '<label class="eq-radio"><input type="radio" name="equip[need]" value="0" ' . ($need ? '' : 'checked') . '><span><i class="bi bi-x-circle"></i>ไม่ต้องการ</span></label>'
+        . '<label class="eq-radio"><input type="radio" name="equip[need]" value="1" ' . ($need ? 'checked' : '') . '><span><i class="bi bi-check2-circle"></i>ต้องการให้จัด</span></label></div>';
+    $h .= '<div class="eq-grid"' . ($need ? '' : ' hidden') . '>';
+    foreach (BOOKING_EQUIPMENT as $k => [$label, $type, $unit, $icon]) {
+        $on = !empty($old['on'][$k]);
+        $val = (string)($old['val'][$k] ?? '');
+        $id = $idp . '_' . $k;
+        $h .= '<div class="eq-item' . ($type === 'text' ? ' is-wide' : '') . '"><label class="eq-check" for="' . $id . '">'
+            . '<input type="checkbox" id="' . $id . '" name="equip[on][' . $k . ']" value="1" ' . ($on ? 'checked' : '') . '>'
+            . '<i class="bi ' . $icon . '"></i><span>' . e($label) . '</span></label>';
+        if ($type === 'qty') $h .= '<div class="eq-in"><input type="number" class="form-control form-control-sm" name="equip[val][' . $k . ']" min="1" max="9999" value="' . e($val) . '" placeholder="จำนวน" ' . ($on ? '' : 'disabled') . '><span>' . e($unit) . '</span></div>';
+        elseif ($type === 'text') $h .= '<div class="eq-in"><input type="text" class="form-control form-control-sm" name="equip[val][' . $k . ']" maxlength="150" value="' . e($val) . '" placeholder="' . e($unit) . ($k === 'stage' ? ' เช่น 4 × 6 ม.' : '') . '" ' . ($on ? '' : 'disabled') . '></div>';
+        $h .= '</div>';
+    }
+    return $h . '</div></div>';
+}
 /** ข้อมูลที่ลงนาม = ข้อมูลหลักของการจอง + ผู้ลงนาม + ภาพลายเซ็น + hash ของขั้นก่อนหน้า (ห่วงโซ่ — แก้ขั้นใดขั้นหนึ่ง ขั้นถัดไปจะไม่ผ่านทั้งหมด) */
 function signature_hash(array $b, array $s, string $png, string $prevHash): string
 {
@@ -437,6 +516,9 @@ function signature_hash(array $b, array $s, string $png, string $prevHash): stri
         $b['id'], $b['booking_no'], $b['room_id'], $b['start_datetime'], $b['end_datetime'], $b['requester_name'], $b['title'], $b['attendees'],
         $s['step'], $s['user_id'] ?? '', $s['signer_name'], $s['decision'], $s['note'] ?? '', $s['signed_at'], hash('sha256', $png), $prevHash,
     ]);
+    // อุปกรณ์ที่ขอให้จัดเป็นส่วนหนึ่งของข้อมูลที่ลงนาม (ต่อท้ายเฉพาะเมื่อมี → ลายเซ็นของคำขอเดิมยังตรวจผ่าน)
+    $eq = booking_equipment($b['equip'] ?? null);
+    if ($eq['need']) $data .= '|' . json_encode($eq['items'], JSON_UNESCAPED_UNICODE);
     return hash_hmac('sha256', $data, APP_SECRET);
 }
 /** ตรวจสอบภาพลายเซ็น PNG จาก data URL → คืนค่าไบต์ของไฟล์ */

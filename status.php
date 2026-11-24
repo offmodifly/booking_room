@@ -116,8 +116,9 @@ public_header('ตรวจสอบสถานะการจอง', 'status'
           </div>
           <div class="card-x-body pt-0">
             <div class="row g-3">
-              <div class="col-md-6"><dl class="dl" style="grid-template-columns:90px 1fr">
-                <dt>หัวข้อ</dt><dd><strong><?= e($b['title']) ?></strong></dd>
+              <div class="col-md-6"><dl class="dl" style="grid-template-columns:115px 1fr">
+                <dt>ใช้สถานที่เพื่อ</dt><dd><strong><?= e($b['title']) ?></strong></dd>
+                <?php if ($eqLines = booking_equipment_lines($b['equip'] ?? null)): ?><dt>อุปกรณ์ให้จัด</dt><dd><?= e(implode(' · ', $eqLines)) ?></dd><?php endif; ?>
                 <dt>ห้อง</dt><dd><?= e($b['room_name']) ?> · <?= e($b['building_name']) ?> ชั้น <?= (int)$b['floor'] ?></dd>
                 <dt>วันที่</dt><dd><?= e(thai_date($b['start_datetime'], 'long')) ?></dd>
                 <dt>เวลา</dt><dd><?= date('H:i', strtotime($b['start_datetime'])) ?>–<?= date('H:i', strtotime($b['end_datetime'])) ?> น. · <?= (int)$b['attendees'] ?> คน</dd>

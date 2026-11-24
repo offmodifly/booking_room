@@ -15,7 +15,10 @@ if (is_post()) {
             $start = date('Y-m-d H:i:s', strtotime(input('date') . ' ' . input('start_time')));
             $end = date('Y-m-d H:i:s', strtotime(input('date') . ' ' . input('end_time')));
             if (!input('date') || $end <= $start) throw new RuntimeException('ช่วงเวลาไม่ถูกต้อง (เวลาสิ้นสุดต้องมากกว่าเวลาเริ่ม)');
-            if (input('title') === '') throw new RuntimeException('กรุณากรอกหัวข้อการประชุม');
+            if (input('title') === '') throw new RuntimeException('กรุณาระบุว่ามีความประสงค์ขอใช้สถานที่เพื่ออะไร');
+            $equipIn = is_array($_POST['equip'] ?? null) ? $_POST['equip'] : [];
+            $equip = booking_equipment($equipIn);
+            if (filter_var($equipIn['need'] ?? false, FILTER_VALIDATE_BOOLEAN) && !$equip['need']) throw new RuntimeException('เลือก "ต้องการให้จัด" แล้ว กรุณาเลือกอุปกรณ์อย่างน้อย 1 รายการ');
             if ($room['status'] === 'unavailable') throw new RuntimeException('ห้องนี้ถูกตั้งสถานะ "ไม่ว่าง" (ปิดใช้งาน)');
             if ($c = booking_conflicts((int)$room['id'], $start, $end)) throw new RuntimeException('ช่วงเวลาชนกับการจอง: ' . e($c[0]['title']) . ' (' . e(time_range($c[0]['start_datetime'], $c[0]['end_datetime'])) . ')');
             $req = (int)input('user_id') ? db_one('SELECT * FROM users WHERE id=?', [(int)input('user_id')]) : null;
@@ -24,8 +27,9 @@ if (is_post()) {
             $png = signature_png_from_dataurl((string)input('signature'));
             $pdo = db();
             $pdo->beginTransaction();
-            db_exec('INSERT INTO bookings (room_id,user_id,requester_name,department,title,purpose,attendees,start_datetime,end_datetime,contact_phone,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [
+            db_exec('INSERT INTO bookings (room_id,user_id,requester_name,department,title,purpose,equip,attendees,start_datetime,end_datetime,contact_phone,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [
                 $room['id'], $req['id'] ?? null, mb_substr($reqName, 0, 150), mb_substr(input('department'), 0, 150), mb_substr(input('title'), 0, 255), input('purpose'),
+                $equip['need'] ? json_encode($equip, JSON_UNESCAPED_UNICODE) : null,
                 max(0, (int)input('attendees')), $start, $end, mb_substr(input('contact_phone'), 0, 30) ?: null, 'pending', $me['id'],
             ]);
             $nid = (int)db()->lastInsertId();
@@ -203,7 +207,7 @@ require __DIR__ . '/../includes/header.php';
     <div class="col-md-7"><label class="form-label">ห้องประชุม <span class="text-danger">*</span></label><select class="form-select" name="room_id" id="nb_room" required><option value="">— เลือกห้อง —</option>
       <?php foreach ($rooms as $r): ?><option value="<?= $r['id'] ?>" <?= (int)qs('room_id') === (int)$r['id'] ? 'selected' : '' ?> <?= $r['status'] === 'unavailable' ? 'disabled' : '' ?>><?= e($r['name']) ?> · <?= e($r['building_name']) ?> (<?= (int)$r['capacity'] ?> ที่นั่ง)<?= $r['status'] === 'unavailable' ? ' — ปิดใช้งาน' : '' ?></option><?php endforeach; ?></select></div>
     <div class="col-md-5"><label class="form-label">จำนวนผู้เข้าร่วม</label><input class="form-control" type="number" min="0" name="attendees" value="10"></div>
-    <div class="col-12"><label class="form-label">หัวข้อการประชุม <span class="text-danger">*</span></label><input class="form-control" name="title" required maxlength="255"></div>
+    <div class="col-12"><label class="form-label">มีความประสงค์ขอใช้สถานที่เพื่อ <span class="text-danger">*</span></label><input class="form-control" name="title" required maxlength="255"></div>
     <div class="col-md-4"><label class="form-label">วันที่ <span class="text-danger">*</span></label><input class="form-control" type="date" name="date" required value="<?= date('Y-m-d') ?>"></div>
     <div class="col-md-4"><label class="form-label">เวลาเริ่ม</label><input class="form-control" type="time" name="start_time" required value="09:00"></div>
     <div class="col-md-4"><label class="form-label">เวลาสิ้นสุด</label><input class="form-control" type="time" name="end_time" required value="12:00"></div>
@@ -212,7 +216,8 @@ require __DIR__ . '/../includes/header.php';
     <div class="col-md-6"><label class="form-label">ชื่อผู้ขอใช้ <span class="text-danger">*</span></label><input class="form-control" name="requester_name" id="nb_name"></div>
     <div class="col-md-6"><label class="form-label">หน่วยงาน / แผนก</label><input class="form-control" name="department"></div>
     <div class="col-md-6"><label class="form-label">เบอร์ติดต่อ</label><input class="form-control" name="contact_phone" id="nb_phone"></div>
-    <div class="col-12"><label class="form-label">วัตถุประสงค์</label><textarea class="form-control" name="purpose" rows="2"></textarea></div>
+    <div class="col-12"><label class="form-label">อุปกรณ์</label><?= booking_equipment_fields([], 'nbeq') ?></div>
+    <div class="col-12"><label class="form-label">รายละเอียดเพิ่มเติม</label><textarea class="form-control" name="purpose" rows="2"></textarea></div>
     <div class="col-12"><label class="form-label d-flex justify-content-between">ลายมือชื่อผู้ขอใช้ห้อง <span class="text-danger">*</span><button type="button" class="btn btn-sm btn-ghost py-0 ms-auto" id="nb_clear"><i class="bi bi-eraser me-1"></i>ล้าง</button></label>
       <div class="sig-wrap sm"><canvas id="nbPad"></canvas><div class="sig-line"></div><div class="sig-ph" id="nb_sigph">( ผู้ขอใช้ห้อง )</div></div></div>
   </div></div>

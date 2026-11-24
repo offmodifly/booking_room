@@ -9,7 +9,7 @@ unset($_SESSION['_req_old']);
 
 if (is_post()) {
     csrf_check();
-    $old = array_intersect_key($_POST, array_flip(['room_id', 'date', 'start_time', 'end_time', 'requester_name', 'department', 'contact_phone', 'title', 'purpose', 'attendees']));
+    $old = array_intersect_key($_POST, array_flip(['room_id', 'date', 'start_time', 'end_time', 'requester_name', 'department', 'contact_phone', 'title', 'purpose', 'attendees', 'equip']));
     try {
         if (input('website') !== '') throw new RuntimeException('ไม่สามารถส่งคำขอได้');           // honeypot กันบอท
         if (!rate_hit('request', 5, 3600)) throw new RuntimeException('ส่งคำขอบ่อยเกินไป กรุณาลองใหม่ภายหลัง');
@@ -33,7 +33,10 @@ if (is_post()) {
         $phone = phone_digits(input('contact_phone'));
         if ($name === '') throw new RuntimeException('กรุณากรอกชื่อ-นามสกุลผู้ขอใช้');
         if (!phone_valid($phone)) throw new RuntimeException('เบอร์โทรศัพท์ไม่ถูกต้อง (ตัวเลข 9–10 หลัก ขึ้นต้นด้วย 0)');
-        if (trim((string)input('title')) === '') throw new RuntimeException('กรุณากรอกหัวข้อ/วัตถุประสงค์การประชุม');
+        if (trim((string)input('title')) === '') throw new RuntimeException('กรุณาระบุว่ามีความประสงค์ขอใช้สถานที่เพื่ออะไร');
+        $equipIn = is_array($_POST['equip'] ?? null) ? $_POST['equip'] : [];
+        $equip = booking_equipment($equipIn);
+        if (filter_var($equipIn['need'] ?? false, FILTER_VALIDATE_BOOLEAN) && !$equip['need']) throw new RuntimeException('เลือก "ต้องการให้จัด" แล้ว กรุณาเลือกอุปกรณ์อย่างน้อย 1 รายการ');
         $att = max(1, (int)input('attendees'));
         if ($att > (int)$room['capacity']) throw new RuntimeException("จำนวนผู้เข้าร่วม ($att คน) เกินความจุห้อง ({$room['capacity']} ที่นั่ง)");
         if ($c = booking_conflicts((int)$room['id'], $start, $end))
@@ -43,9 +46,9 @@ if (is_post()) {
 
         $pdo = db();
         $pdo->beginTransaction();
-        db_exec('INSERT INTO bookings (room_id,user_id,requester_name,department,title,purpose,attendees,start_datetime,end_datetime,contact_phone,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [
+        db_exec('INSERT INTO bookings (room_id,user_id,requester_name,department,title,purpose,equip,attendees,start_datetime,end_datetime,contact_phone,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [
             $room['id'], null, mb_substr($name, 0, 150), mb_substr(trim((string)input('department')), 0, 150), mb_substr(trim((string)input('title')), 0, 255),
-            mb_substr(trim((string)input('purpose')), 0, 2000) ?: null, $att, $start, $end, phone_format($phone), 'pending', null,
+            mb_substr(trim((string)input('purpose')), 0, 2000) ?: null, $equip['need'] ? json_encode($equip, JSON_UNESCAPED_UNICODE) : null, $att, $start, $end, phone_format($phone), 'pending', null,
         ]);
         $nid = (int)$pdo->lastInsertId();
         $no = 'BK' . date('ym', strtotime($start)) . '-' . str_pad((string)$nid, 4, '0', STR_PAD_LEFT);
@@ -73,6 +76,32 @@ $done = qs('done') && !empty($_SESSION['_req_done'])
     ? db_one('SELECT b.*, r.name room_name, bd.name building_name FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN buildings bd ON bd.id=r.building_id WHERE b.id=?', [$_SESSION['_req_done']])
     : null;
 
+$roomImgs = [];
+foreach (db_all('SELECT * FROM room_images ORDER BY sort_order, id') as $img) $roomImgs[$img['room_id']][] = $img;
+// ข้อมูลรายละเอียดห้อง (popup) + ค่าโมเดล 3D
+$roomInfo = [];
+foreach ($rooms as $r) {
+    $cfg = room_3d_cfg($r);
+    $L = $cfg['layout'];
+    $feat = [];
+    if ($L['display'] !== 'none') $feat[] = ['bi-display', ROOM_DISPLAYS[$L['display']]];
+    if ($L['stage']) $feat[] = ['bi-easel3', 'เวทีหน้าห้อง + โพเดียม'];
+    if ($L['tableType'] !== 'none' && $L['tables']) $feat[] = [ROOM_TABLE_TYPES[$L['tableType']][1], ROOM_TABLE_TYPES[$L['tableType']][0] . " · {$L['tables']} ตัว"];
+    else $feat[] = ['bi-grid-3x3', ROOM_TABLE_TYPES['none'][0]];
+    foreach (ROOM_LAYOUT_COUNTS as $k => [$lbl, $ico, , $unit]) {
+        if ($k === 'tables' || !$L[$k]) continue;
+        $feat[] = [$ico, "$lbl {$L[$k]} " . explode(' ', $unit)[0]];
+    }
+    $roomInfo[$r['id']] = [
+        'id' => (int)$r['id'], 'name' => $r['name'], 'code' => $r['code'], 'building' => $r['building_name'], 'floor' => (int)$r['floor'],
+        'capacity' => (int)$r['capacity'], 'size' => sprintf('%s × %s × %s ม.', (float)$r['width_m'], (float)$r['depth_m'], (float)$r['height_m']),
+        'area' => round((float)$r['width_m'] * (float)$r['depth_m']), 'closed' => $r['status'] === 'unavailable',
+        'status' => ROOM_STATUS[$r['status']]['label'] ?? '', 'statusColor' => ROOM_STATUS[$r['status']]['color'] ?? '#64748b',
+        'equipment' => trim((string)$r['equipment']), 'description' => trim((string)$r['description']), 'features' => $feat,
+        'photos' => array_map(fn($i) => upload_url($i['file']), $roomImgs[$r['id']] ?? []),
+        'snap' => $cfg, 'viewer' => [...$cfg, 'name' => $r['name'], 'capacity' => (int)$r['capacity']],
+    ];
+}
 $selRoom = (int)($old['room_id'] ?? qs('room', 0));
 $selDate = $old['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)qs('date')) ? qs('date') : date('Y-m-d', strtotime('+1 day')));
 $times = [];
@@ -98,7 +127,8 @@ public_header('ขอใช้ห้องประชุม', 'request');
       <div class="ticket-no"><small>เลขที่คำขอ</small><strong><?= e($done['booking_no']) ?></strong></div>
       <dl class="dl"><dt>ห้อง</dt><dd><?= e($done['room_name']) ?> · <?= e($done['building_name']) ?></dd>
         <dt>วันเวลา</dt><dd><?= e(thai_date($done['start_datetime'], 'long')) ?><br><?= date('H:i', strtotime($done['start_datetime'])) ?>–<?= date('H:i', strtotime($done['end_datetime'])) ?> น.</dd>
-        <dt>หัวข้อ</dt><dd><?= e($done['title']) ?></dd>
+        <dt>ขอใช้สถานที่เพื่อ</dt><dd><?= e($done['title']) ?></dd>
+        <?php if ($eqLines = booking_equipment_lines($done['equip'])): ?><dt>อุปกรณ์ให้จัด</dt><dd><?= e(implode(' · ', $eqLines)) ?></dd><?php endif; ?>
         <dt>ผู้ขอใช้</dt><dd><?= e($done['requester_name']) ?></dd>
         <dt>เบอร์ติดต่อ</dt><dd><?= e($done['contact_phone']) ?></dd></dl>
     </div>
@@ -126,10 +156,11 @@ public_header('ขอใช้ห้องประชุม', 'request');
           <?php foreach ($rooms as $r): $closed = $r['status'] === 'unavailable'; ?>
             <label class="room-opt <?= $closed ? 'is-closed' : '' ?>">
               <input type="radio" name="room_id" value="<?= $r['id'] ?>" data-cap="<?= (int)$r['capacity'] ?>" data-name="<?= e($r['name']) ?>" data-building="<?= e($r['building_name']) ?>" <?= $selRoom === (int)$r['id'] ? 'checked' : '' ?> <?= $closed ? 'disabled' : '' ?> required>
-              <span class="room-opt-img" style="--c:<?= e($r['color']) ?>"><?php if ($r['cover']): ?><img src="<?= e(upload_url($r['cover'])) ?>" alt="" loading="lazy"><?php else: ?><i class="bi bi-easel2"></i><?php endif; ?></span>
+              <span class="room-opt-img is-3d" data-snap-room="<?= $r['id'] ?>" data-room-info="<?= $r['id'] ?>" title="ดูรายละเอียดห้อง"><span class="snap-spin"></span><img alt="โมเดล 3D <?= e($r['name']) ?>" hidden></span>
               <span class="room-opt-body"><strong><?= e($r['name']) ?></strong>
                 <small><?= e($r['building_name']) ?> · ชั้น <?= (int)$r['floor'] ?></small>
-                <small><i class="bi bi-people"></i> <?= (int)$r['capacity'] ?> ที่นั่ง<?= $closed ? ' · <span class="text-danger">ปิดปรับปรุง</span>' : '' ?></small></span>
+                <small><i class="bi bi-people"></i> <?= (int)$r['capacity'] ?> ที่นั่ง<?= $closed ? ' · <span class="text-danger">ปิดปรับปรุง</span>' : '' ?></small>
+                <button type="button" class="room-opt-info" data-room-info="<?= $r['id'] ?>" aria-label="รายละเอียด <?= e($r['name']) ?>"><i class="bi bi-info-circle"></i>รายละเอียด</button></span>
               <i class="bi bi-check-circle-fill room-opt-check"></i>
             </label>
           <?php endforeach; ?>
@@ -163,9 +194,10 @@ public_header('ขอใช้ห้องประชุม', 'request');
       <!-- 4. รายละเอียดการประชุม -->
       <div class="card-x reveal" style="--i:3"><div class="card-x-head"><h5><span class="step-no">4</span>รายละเอียดการประชุม</h5></div>
         <div class="card-x-body row g-3">
-          <div class="col-md-9"><label class="form-label">หัวข้อการประชุม / กิจกรรม <span class="text-danger">*</span></label><input class="form-control" name="title" value="<?= e($old['title'] ?? '') ?>" maxlength="255" required></div>
+          <div class="col-md-9"><label class="form-label">มีความประสงค์ขอใช้สถานที่เพื่อ <span class="text-danger">*</span></label><input class="form-control" name="title" value="<?= e($old['title'] ?? '') ?>" maxlength="255" placeholder="เช่น ประชุมครูประจำแผนก / อบรมเชิงปฏิบัติการ / จัดสัมมนา" required></div>
           <div class="col-md-3"><label class="form-label">ผู้เข้าร่วม (คน) <span class="text-danger">*</span></label><input type="number" class="form-control" name="attendees" id="fAtt" value="<?= e($old['attendees'] ?? '10') ?>" min="1" required><div class="form-text" id="capHint"></div></div>
-          <div class="col-12"><label class="form-label">รายละเอียดเพิ่มเติม / อุปกรณ์ที่ต้องการ</label><textarea class="form-control" name="purpose" rows="3" maxlength="2000" placeholder="เช่น ต้องการโปรเจกเตอร์ ไมโครโฟน 2 ตัว จัดโต๊ะแบบตัว U"><?= e($old['purpose'] ?? '') ?></textarea></div>
+          <div class="col-12"><label class="form-label">อุปกรณ์</label><?= booking_equipment_fields(is_array($old['equip'] ?? null) ? $old['equip'] : []) ?></div>
+          <div class="col-12"><label class="form-label">รายละเอียดเพิ่มเติม</label><textarea class="form-control" name="purpose" rows="3" maxlength="2000" placeholder="เช่น จัดโต๊ะแบบตัว U ต้องการเปิดแอร์ก่อนเวลา 30 นาที"><?= e($old['purpose'] ?? '') ?></textarea></div>
         </div></div>
 
       <!-- 5. ลงลายมือชื่อผู้ขอใช้ -->
@@ -197,5 +229,54 @@ public_header('ขอใช้ห้องประชุม', 'request');
   </form>
 <?php endif; ?>
 </div>
+
+<!-- รายละเอียดห้องประชุม -->
+<div class="modal fade" id="roomModal" tabindex="-1" aria-labelledby="rmName" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title"><span class="modal-icon"><i class="bi bi-door-open"></i></span>
+        <div><h5 class="mb-0" id="rmName"></h5><small class="text-muted fw-normal" id="rmSub"></small></div></div>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+    </div>
+    <div class="modal-body">
+      <div class="row g-4">
+        <div class="col-lg-7">
+          <div class="v3d rm-viewer" id="rmViewer">
+            <div class="v3d-loading"><div class="text-center"><div class="v3d-spinner mx-auto mb-3"></div><div class="small text-muted">กำลังสร้างห้อง 3 มิติ...</div></div></div>
+            <div class="v3d-toolbar">
+              <button type="button" class="btn btn-sm" data-rm-mode="dollhouse"><i class="bi bi-box me-1"></i>มุมมองภาพรวม</button>
+              <button type="button" class="btn btn-sm" data-rm-mode="inside"><i class="bi bi-eye me-1"></i>มุมมองภายใน 360°</button>
+            </div>
+          </div>
+          <p class="small text-muted mt-2 mb-0"><i class="bi bi-hand-index me-1"></i>ลากเพื่อหมุนดูรอบห้อง · เลื่อนลูกกลิ้งเพื่อซูม</p>
+        </div>
+        <div class="col-lg-5">
+          <div class="rm-stats">
+            <div><i class="bi bi-people"></i><strong id="rmCap"></strong><span>ที่นั่ง</span></div>
+            <div><i class="bi bi-arrows-angle-expand"></i><strong id="rmArea"></strong><span>ตร.ม.</span></div>
+            <div><i class="bi bi-layers"></i><strong id="rmFloor"></strong><span>ชั้น</span></div>
+          </div>
+          <dl class="dl rm-dl">
+            <dt>อาคาร</dt><dd id="rmBuilding"></dd>
+            <dt>ขนาดห้อง</dt><dd id="rmSize"></dd>
+            <dt>สถานะ</dt><dd id="rmStatus"></dd>
+          </dl>
+          <h6 class="rm-h"><i class="bi bi-ui-checks-grid me-1"></i>การจัดห้อง / อุปกรณ์</h6>
+          <ul class="rm-feat" id="rmFeat"></ul>
+          <div id="rmEquipWrap"><h6 class="rm-h"><i class="bi bi-tools me-1"></i>อุปกรณ์เพิ่มเติม</h6><p class="small mb-0" id="rmEquip"></p></div>
+          <div id="rmDescWrap"><h6 class="rm-h"><i class="bi bi-card-text me-1"></i>รายละเอียด</h6><p class="small mb-0" id="rmDesc"></p></div>
+        </div>
+      </div>
+      <div id="rmPhotosWrap" class="mt-4"><h6 class="rm-h"><i class="bi bi-images me-1"></i>รูปภาพห้อง</h6><div class="rm-photos" id="rmPhotos"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">ปิด</button>
+      <button type="button" class="btn btn-primary" id="rmSelect"><i class="bi bi-check2-circle me-1"></i>เลือกห้องนี้</button>
+    </div>
+  </div></div>
+</div>
+<script type="application/json" id="roomData"><?= json_encode($roomInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <?php
-public_footer('<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script><script src="' . asset('js/public.js') . '"></script>');
+public_footer('<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script><script src="' . asset('js/public.js') . '"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="' . asset('js/request3d.js') . '"></script>');

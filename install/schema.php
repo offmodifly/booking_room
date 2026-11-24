@@ -89,6 +89,7 @@ return [
   department VARCHAR(150) NOT NULL DEFAULT '',
   title VARCHAR(255) NOT NULL,
   purpose TEXT NULL,
+  equip TEXT NULL,
   attendees INT UNSIGNED NOT NULL DEFAULT 0,
   start_datetime DATETIME NOT NULL,
   end_datetime DATETIME NOT NULL,

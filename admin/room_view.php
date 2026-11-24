@@ -12,12 +12,7 @@ $eff = room_effective_status($r['status'], $todayBk);
 $upcoming = db_all("SELECT * FROM bookings WHERE room_id=? AND status IN " . ACTIVE_SQL . " AND end_datetime>=NOW() ORDER BY start_datetime LIMIT 8", [$r['id']]);
 $siblings = db_all('SELECT id,name,floor,pos_x,pos_y,status FROM rooms WHERE building_id=?', [$r['building_id']]);
 
-$roomCfg = ['width' => (float)$r['width_m'], 'depth' => (float)$r['depth_m'], 'height' => (float)$r['height_m'], 'capacity' => (int)$r['capacity'], 'color' => $r['color'], 'name' => $r['name'],
-    'layout' => room_layout($r['layout'], (int)$r['capacity'], (string)$r['equipment']),
-    'images' => (function () use ($images) {
-        $m = assign_faces($images, 'wall', ['front', 'right', 'back', 'left']);
-        return $m;
-    })()];
+$roomCfg = [...room_3d_cfg($r), 'capacity' => (int)$r['capacity'], 'name' => $r['name']];
 $bCfg = [...building_3d_cfg(['name' => $r['building_name'], 'floors' => $r['floors'], 'width_m' => $r['bw'], 'depth_m' => $r['bd'], 'color' => $r['bcolor'], 'style' => $r['bstyle']], $bImages),
     'highlightRoomId' => $r['id'], 'xray' => true,
     'rooms' => array_map(fn($s) => ['id' => $s['id'], 'name' => $s['name'], 'floor' => (int)$s['floor'], 'x' => (float)$s['pos_x'], 'y' => (float)$s['pos_y'], 'status' => (int)$s['id'] === (int)$r['id'] ? $eff : $s['status']], $siblings)];
@@ -39,7 +34,7 @@ require __DIR__ . '/../includes/header.php';
 <div class="row g-4">
   <div class="col-xl-8">
     <div class="v3d reveal" id="roomViewer" style="height:580px">
-      <div class="v3d-loading"><div class="text-center"><div class="v3d-spinner mx-auto mb-3"></div><div class="small text-muted">กำลังสร้างห้อง 3 มิติจากรูปภาพ...</div></div></div>
+      <div class="v3d-loading"><div class="text-center"><div class="v3d-spinner mx-auto mb-3"></div><div class="small text-muted">กำลังสร้างห้อง 3 มิติ...</div></div></div>
       <div class="v3d-toolbar">
         <button class="btn btn-sm active" data-mode="inside"><i class="bi bi-eye me-1"></i>มุมมองภายใน 360°</button>
         <button class="btn btn-sm" data-mode="dollhouse"><i class="bi bi-box me-1"></i>Dollhouse</button>
@@ -50,7 +45,7 @@ require __DIR__ . '/../includes/header.php';
       </div>
       <div class="v3d-hint"><i class="bi bi-hand-index me-1"></i>ลากเพื่อมองรอบห้อง · สกรอลล์เพื่อซูม</div>
     </div>
-    <?php if (!$images): ?><div class="alert alert-info mt-3 small"><i class="bi bi-magic me-1"></i>ห้องนี้จัดฉากจากลักษณะห้องที่กำหนด (เวที โต๊ะ เก้าอี้ อุปกรณ์) — <a href="<?= url('admin/room_form.php?id=' . $r['id']) ?>#layout">ปรับการจัดห้อง</a> หรืออัปโหลดรูปผนังแต่ละด้านเพื่อให้สมจริง</div><?php endif; ?>
+    <div class="alert alert-info mt-3 small"><i class="bi bi-magic me-1"></i>โมเดล 3D สร้างจากลักษณะห้องที่กำหนด (ขนาด สีผนัง เวที โต๊ะ เก้าอี้ อุปกรณ์) — <a href="<?= url('admin/room_form.php?id=' . $r['id']) ?>#layout">ปรับการจัดห้อง</a></div>
   </div>
   <div class="col-xl-4">
     <div class="card-x reveal mb-4" style="--i:1"><div class="card-x-head"><h5><i class="bi bi-geo"></i>ตำแหน่งในอาคาร</h5><a class="small" href="<?= url('admin/building_view.php?id=' . $r['building_id']) ?>">ดูทั้งอาคาร</a></div>

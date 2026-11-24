@@ -90,6 +90,18 @@
     ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove('drag')));
   });
 
+  // ---------- ช่องอุปกรณ์ที่ขอให้จัด (booking_equipment_fields) ----------
+  document.addEventListener('change', e => {
+    const box = e.target.closest('[data-eq]');
+    if (!box) return;
+    if (e.target.name === 'equip[need]') {
+      box.querySelector('.eq-grid').hidden = e.target.value !== '1';
+    } else if (e.target.type === 'checkbox') {
+      const inp = e.target.closest('.eq-item').querySelector('.eq-in input');
+      if (inp) { inp.disabled = !e.target.checked; if (e.target.checked) inp.focus(); }
+    }
+  });
+
   // ---------- helpers exposed ----------
   window.escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   window.cssVar = n => getComputedStyle(root).getPropertyValue(n).trim();

@@ -41,7 +41,7 @@ if (is_post()) {
             $img = db_one('SELECT * FROM room_images WHERE id=? AND room_id=?', [(int)$imgId, $id]);
             if ($img) { delete_upload($img['file']); db_exec('DELETE FROM room_images WHERE id=?', [$img['id']]); }
         }
-        [$saved, $errors] = save_uploaded_images($_FILES['images'] ?? null, 'rooms');
+        [$saved, $errors] = save_uploaded_images($_FILES['images'] ?? null, 'rooms', 1920);
         $walls = (array)($_POST['new_wall'] ?? []);
         $order = (int)db_val('SELECT COALESCE(MAX(sort_order),0) FROM room_images WHERE room_id=?', [$id]);
         foreach ($saved as $i => $file) {
@@ -139,7 +139,8 @@ require __DIR__ . '/../includes/header.php';
     <div class="card-x reveal" style="--i:1"><div class="card-x-head"><h5><i class="bi bi-images"></i>รูปภาพห้องประชุม (ไม่บังคับ)</h5><span class="text-muted small"><?= count($images) ?> รูป</span></div>
       <div class="card-x-body">
         <label class="dropzone d-block mb-3"><input type="file" name="images[]" id="imgInput" accept="image/jpeg,image/png,image/webp" multiple><i class="bi bi-cloud-arrow-up"></i>
-          <div class="fw-semibold mt-1">เลือกรูปห้องหลายรูป</div><div class="small text-muted">ถ่ายผนังแต่ละด้านแบบหันตรง (หน้า/ขวา/หลัง/ซ้าย) + พื้น/เพดาน เพื่อให้ห้อง 3D สมจริงที่สุด</div></label>
+          <div class="fw-semibold mt-1">เลือกรูปห้องหลายรูป</div><div class="small text-muted">ใช้แสดงในแกลเลอรีรูปห้อง (ไม่นำไปเคลือบบนโมเดล 3D · โมเดลสร้างจากการจัดห้องด้านบน)</div>
+          <div class="small text-success mt-1 dz-hint"><i class="bi bi-arrows-angle-contract me-1"></i>ระบบย่อรูปให้อัตโนมัติ (ด้านยาวสุด 1920px · JPG) อัปโหลดรูปจากมือถือได้เลย</div></label>
         <div class="thumb-grid mb-3" id="imgPreview"></div>
         <?php if ($images): ?><div class="thumb-grid">
           <?php foreach ($images as $img): ?>
@@ -202,7 +203,7 @@ document.querySelectorAll(".chip-tabs label.chip input[type=radio]").forEach(r =
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import { createRoomViewer } from "' . asset('js/viewer3d.js') . '";
-const imgs = ' . json_encode(assign_faces($images, 'wall', ['front', 'right', 'back', 'left']), JSON_UNESCAPED_SLASHES) . ';
+const imgs = {}; // โมเดลไม่เคลือบรูปถ่าย
 const form = document.querySelector("form[enctype]"), el = document.getElementById("layoutPreview"), statsEl = document.getElementById("layoutStats");
 const $ = n => form.querySelector(`[name="${n}"]`);
 let viewer = null, t = null, mode = "dollhouse";

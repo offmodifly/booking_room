@@ -600,3 +600,51 @@ body.pub{display:flex;flex-direction:column}
 .layout-opt{padding:.85rem;border:1px solid var(--line);border-radius:14px;background:var(--surface-2);height:100%}
 .layout-opt .form-label{font-weight:600}
 .layout-opt.is-off .num-step{opacity:.4;pointer-events:none}
+/* ไอคอนห้องแบบ 3D ในหน้าขอใช้ห้อง (request.php) */
+.room-opt-img.is-3d{background:radial-gradient(120% 90% at 30% 15%,#fff 0%,#e3e9f6 50%,#c9d3ea 100%)}
+[data-bs-theme=dark] .room-opt-img.is-3d{background:radial-gradient(120% 90% at 30% 15%,#26325a 0%,#141c38 60%,#0b1124 100%)}
+.room-opt-img.is-3d .snap-spin{width:22px;height:22px;border-width:2px}
+.room-opt-img.is-3d.is-ready .snap-spin{display:none}
+.room-opt-img.is-3d img{object-fit:contain;transform:scale(1.35);transition:transform .4s var(--ease)}
+.room-opt:hover .room-opt-img.is-3d img,.room-opt:has(input:checked) .room-opt-img.is-3d img{transform:scale(1.5)}
+/* ปุ่ม/ป๊อปอัปรายละเอียดห้อง (request.php) */
+.room-opt-img.is-3d{cursor:zoom-in}
+.room-opt-body{padding-right:1.4rem}
+.room-opt-info{align-self:flex-start;display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;padding:.15rem .6rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--brand) 35%,var(--line));background:color-mix(in srgb,var(--brand) 6%,var(--surface));color:var(--brand);font-size:.74rem;font-weight:600;line-height:1.5;transition:.2s}
+.room-opt-info:hover,.room-opt-info:focus-visible{background:var(--brand);color:#fff;border-color:var(--brand)}
+.rm-viewer{height:420px}
+@media (max-width:991.98px){.rm-viewer{height:320px}}
+.rm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:1rem}
+.rm-stats>div{display:flex;flex-direction:column;align-items:center;padding:.7rem .4rem;border-radius:14px;background:var(--surface-2);border:1px solid var(--line);line-height:1.2}
+.rm-stats i{color:var(--brand);font-size:1.15rem}.rm-stats strong{font-size:1.25rem}.rm-stats span{font-size:.75rem;color:var(--muted)}
+.rm-dl{margin-bottom:1rem}
+.rm-h{font-size:.85rem;font-weight:600;margin:1rem 0 .5rem}
+.rm-feat{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:.4rem}
+.rm-feat li{display:flex;gap:.45rem;align-items:center;font-size:.83rem;padding:.4rem .6rem;border-radius:10px;background:var(--surface-2)}
+.rm-feat i{color:var(--brand)}
+.rm-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.6rem}
+.rm-photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;border:1px solid var(--line)}
+/* อุปกรณ์ที่ขอให้จัด (แบบฟอร์มขอใช้สถานที่) */
+.eq-box{border:1px solid var(--line);border-radius:14px;padding:.8rem;background:var(--surface)}
+.eq-need{display:flex;flex-wrap:wrap;gap:.5rem}
+.eq-radio{position:relative;cursor:pointer}
+.eq-radio input{position:absolute;opacity:0;pointer-events:none}
+.eq-radio span{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;border-radius:999px;border:1.5px solid var(--line);font-size:.88rem;transition:.2s}
+.eq-radio input:checked+span{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 9%,var(--surface));color:var(--brand);font-weight:600}
+.eq-radio input:focus-visible+span{outline:2px solid var(--brand);outline-offset:2px}
+.eq-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin-top:.8rem}
+.eq-grid[hidden]{display:none}
+@media (max-width:575.98px){.eq-grid{grid-template-columns:1fr}}
+.eq-item{display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-radius:11px;background:var(--surface-2);min-height:44px}
+.eq-item.is-wide{grid-column:1/-1}
+.eq-check{display:flex;align-items:center;gap:.45rem;cursor:pointer;margin:0;flex:0 0 auto;font-size:.88rem}
+.eq-check input{width:1.05rem;height:1.05rem;accent-color:var(--brand)}
+.eq-check i{color:var(--brand)}
+.eq-item:has(input[type=checkbox]:checked){box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--brand) 55%,transparent)}
+.eq-in{display:flex;align-items:center;gap:.4rem;margin-left:auto;flex:1 1 auto;justify-content:flex-end}
+.eq-in input[type=number]{max-width:90px}
+.eq-in input[type=text]{max-width:none}
+.eq-in span{font-size:.82rem;color:var(--muted)}
+.eq-in input:disabled{opacity:.45}
+.eq-list{margin:0;padding-left:1.1rem}
+.dropzone .dz-hint .bi{font-size:inherit;color:inherit}

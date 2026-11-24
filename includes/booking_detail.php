@@ -73,7 +73,9 @@ function render_booking_detail(array $b): string
       <dt>ผู้ขอใช้</dt><dd><?= e($b['requester_name']) ?><?= $b['department'] ? ' <span class="text-muted">· ' . e($b['department']) . '</span>' : '' ?></dd>
       <dt>ติดต่อ</dt><dd><?= e($b['contact_phone'] ?: '-') ?></dd>
       <dt>จำนวนผู้เข้าร่วม</dt><dd><?= (int)$b['attendees'] ?> คน <span class="text-muted">(ความจุห้อง <?= (int)$b['capacity'] ?>)</span></dd>
-      <dt>วัตถุประสงค์</dt><dd><?= nl2br(e($b['purpose'] ?: '-')) ?></dd>
+      <dt>ขอใช้สถานที่เพื่อ</dt><dd><?= e($b['title']) ?></dd>
+      <dt>อุปกรณ์ให้จัด</dt><dd><?php $eqLines = booking_equipment_lines($b['equip'] ?? null); ?><?= $eqLines ? '<ul class="eq-list">' . implode('', array_map(fn($l) => '<li>' . e($l) . '</li>', $eqLines)) . '</ul>' : '<span class="text-muted">ไม่ต้องการ</span>' ?></dd>
+      <dt>รายละเอียดเพิ่มเติม</dt><dd><?= nl2br(e($b['purpose'] ?: '-')) ?></dd>
       <?php if ($b['admin_note']): ?><dt>หมายเหตุ Admin</dt><dd><?= e($b['admin_note']) ?></dd><?php endif; ?>
     </dl>
 

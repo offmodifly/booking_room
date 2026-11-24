@@ -36,18 +36,14 @@ $today = date('Y-m-d');
 $todayBk = [];
 foreach (db_all("SELECT * FROM bookings WHERE status IN " . ACTIVE_SQL . " AND start_datetime<=? AND end_datetime>=?", ["$today 23:59:59", "$today 00:00:00"]) as $x) $todayBk[$x['room_id']][] = $x;
 $buildings = db_all('SELECT id,name FROM buildings ORDER BY name');
-$imgsBy = [];
-foreach (db_all('SELECT * FROM room_images ORDER BY sort_order, id') as $img) $imgsBy[$img['room_id']][] = $img;
-$snapCfg = fn($r) => ['width' => (float)$r['width_m'], 'depth' => (float)$r['depth_m'], 'height' => (float)$r['height_m'], 'color' => $r['color'],
-    'layout' => room_layout($r['layout'], (int)$r['capacity'], (string)$r['equipment']),
-    'images' => assign_faces($imgsBy[$r['id']] ?? [], 'wall', ['front', 'right', 'back', 'left'])];
+$snapCfg = fn($r) => room_3d_cfg($r);
 
 $pageTitle = 'จัดการห้องประชุม';
 $activeMenu = 'rooms';
 require __DIR__ . '/../includes/header.php';
 ?>
 <div class="page-head reveal">
-  <div><span class="eyebrow"><i class="bi bi-door-open"></i>Meeting Rooms</span><h2>จัดการห้องประชุม</h2><p>กำหนดชื่อห้อง อาคาร ชั้น พิกัดภายในอาคาร รูปภาพ (สร้าง 3D) และสถานะ ว่าง / จอง / ไม่ว่าง</p></div>
+  <div><span class="eyebrow"><i class="bi bi-door-open"></i>Meeting Rooms</span><h2>จัดการห้องประชุม</h2><p>กำหนดชื่อห้อง อาคาร ชั้น พิกัดภายในอาคาร การจัดห้อง (สร้าง 3D) รูปภาพ และสถานะ ว่าง / จอง / ไม่ว่าง</p></div>
   <div class="actions"><a href="<?= url('admin/room_form.php' . ($bid ? '?building_id=' . $bid : '')) ?>" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>เพิ่มห้องประชุม</a></div>
 </div>
 
