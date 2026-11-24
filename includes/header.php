@@ -19,8 +19,10 @@ if ($me) {
         }
     }
     if ($me['role'] === 'room_staff') {
-        foreach (db_all("SELECT b.id,b.title,b.start_datetime,r.name room FROM booking_staff s JOIN bookings b ON b.id=s.booking_id JOIN rooms r ON r.id=b.room_id WHERE s.user_id=? AND b.status='approved' AND b.end_datetime>=NOW() ORDER BY b.start_datetime LIMIT 6", [$me['id']]) as $n) {
-            $notifs[] = ['icon' => 'bi-clipboard-check', 'color' => '#10b981', 'title' => 'งานดูแลห้อง: ' . $n['title'], 'sub' => $n['room'] . ' · ' . thai_date($n['start_datetime'], 'datetime'), 'url' => url('admin/index.php')];
+        foreach (db_all("SELECT b.id,b.title,b.start_datetime,r.name room,s.ack_at FROM booking_staff s JOIN bookings b ON b.id=s.booking_id JOIN rooms r ON r.id=b.room_id WHERE s.user_id=? AND b.status='approved' AND b.end_datetime>=NOW() AND s.done_at IS NULL ORDER BY (s.ack_at IS NULL) DESC, b.start_datetime LIMIT 6", [$me['id']]) as $n) {
+            $notifs[] = $n['ack_at']
+                ? ['icon' => 'bi-clipboard-check', 'color' => '#10b981', 'title' => 'งานดูแลห้อง: ' . $n['title'], 'sub' => $n['room'] . ' · ' . thai_date($n['start_datetime'], 'datetime'), 'url' => url('admin/tasks.php#task-' . $n['id'])]
+                : ['icon' => 'bi-bell-fill', 'color' => '#ef4444', 'title' => 'งานใหม่ (รอรับทราบ): ' . $n['title'], 'sub' => $n['room'] . ' · ' . thai_date($n['start_datetime'], 'datetime'), 'url' => url('admin/tasks.php#task-' . $n['id'])];
         }
     }
 }
@@ -57,6 +59,7 @@ if ($me) {
         $count = 0;
         if ($m['key'] === 'bookings') $count = (int)db_val("SELECT COUNT(*) FROM bookings WHERE status='signed'");
         if ($m['key'] === 'sign' && ($ss = role_sign_step($me['role']))) $count = (int)db_val('SELECT COUNT(*) FROM bookings WHERE status=?', [SIGN_STEPS[$ss]['from']]);
+        if ($m['key'] === 'tasks') $count = staff_task_count((int)$me['id']);
     ?>
       <a class="nav-link-x <?= $activeMenu === $m['key'] ? 'active' : '' ?>" href="<?= url($m['url']) ?>" data-bs-title="<?= e($m['label']) ?>">
         <i class="bi <?= e($m['icon']) ?>"></i><span class="nav-text"><?= e($m['label']) ?></span>

@@ -133,6 +133,8 @@ return [
   user_id INT UNSIGNED NOT NULL,
   assigned_by INT UNSIGNED NULL,
   assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ack_at DATETIME NULL,
+  done_at DATETIME NULL,
   PRIMARY KEY (booking_id, user_id),
   CONSTRAINT fk_bs_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
   CONSTRAINT fk_bs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

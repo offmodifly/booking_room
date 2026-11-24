@@ -9,7 +9,7 @@ function booking_load(int $id): ?array
 }
 function booking_staff_list(int $id): array
 {
-    return db_all('SELECT u.* FROM booking_staff s JOIN users u ON u.id=s.user_id WHERE s.booking_id=? ORDER BY u.first_name', [$id]);
+    return db_all('SELECT u.*, s.ack_at, s.done_at FROM booking_staff s JOIN users u ON u.id=s.user_id WHERE s.booking_id=? ORDER BY u.first_name', [$id]);
 }
 
 /** สถานะของแต่ละขั้นการลงนาม: done | reject | now | idle */
@@ -88,7 +88,7 @@ function render_booking_detail(array $b): string
     <h6 class="mb-3 mt-4">การดำเนินการของผู้ดูแลระบบ</h6>
     <ul class="timeline mb-2">
       <li class="<?= $b['approved_at'] ? '' : 'off' ?>"><span class="tl-dot" style="--c:#ef4444"><i class="bi bi-check2-circle"></i></span><strong>Admin ยืนยัน · เปลี่ยนสถานะเป็น "ไม่ว่าง"</strong><small><?= $b['approved_at'] ? e(thai_date($b['approved_at'], 'datetime') . ' · ' . $admin) : ($st === 'signed' ? 'พร้อมดำเนินการ' : 'รอผู้อำนวยการอนุมัติก่อน') ?></small></li>
-      <li class="<?= $staff ? '' : 'off' ?>"><span class="tl-dot" style="--c:#10b981"><i class="bi bi-person-check"></i></span><strong>มอบหมายเจ้าหน้าที่ประจำห้อง</strong><small><?= $staff ? e(implode(', ', array_map('full_name', $staff))) : 'ยังไม่มอบหมาย' ?></small></li>
+      <li class="<?= $staff ? '' : 'off' ?>"><span class="tl-dot" style="--c:#10b981"><i class="bi bi-person-check"></i></span><strong>มอบหมายเจ้าหน้าที่ประจำห้อง</strong><small><?= $staff ? implode(', ', array_map(fn($u) => e(full_name($u)) . ' <span class="' . ($u['done_at'] ? 'text-success' : ($u['ack_at'] ? 'text-primary' : 'text-warning')) . '">(' . ($u['done_at'] ? 'จัดเตรียมแล้ว' : ($u['ack_at'] ? 'รับทราบแล้ว' : 'ยังไม่รับทราบ')) . ')</span>', $staff)) : 'ยังไม่มอบหมาย' ?></small></li>
     </ul>
     <?php return ob_get_clean();
 }

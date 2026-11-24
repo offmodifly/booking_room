@@ -76,7 +76,12 @@ const MENU = [
     ['key' => 'dashboard', 'label' => 'แดชบอร์ด',            'icon' => 'bi-grid-1x2',        'url' => 'admin/index.php',    'roles' => '*'],
     ['header' => 'การจองห้อง'],
     ['key' => 'bookings',  'label' => 'รายการจอง / อนุมัติ',  'icon' => 'bi-calendar2-check', 'url' => 'admin/bookings.php', 'roles' => ['admin']],
+    ['key' => 'tasks',     'label' => 'แจ้งเตือน',            'icon' => 'bi-bell',            'url' => 'admin/tasks.php',    'roles' => ['room_staff']],
     ['key' => 'sign',      'label' => 'ลงนามอนุมัติ',         'icon' => 'bi-pen',             'url' => 'admin/sign.php',     'roles' => ['building_head', 'deputy_director', 'director']],
+    ['header' => 'งานอาคาร'],
+    ['key' => 'usage',     'label' => 'ตรวจสอบสถานะการใช้ห้อง', 'icon' => 'bi-calendar3-range', 'url' => 'admin/usage.php',       'roles' => ['building_staff', 'admin']],
+    ['key' => 'printform', 'label' => 'พิมพ์ฟอร์มขอใช้สถานที่',  'icon' => 'bi-printer',         'url' => 'admin/print_forms.php', 'roles' => ['building_staff', 'admin']],
+    ['key' => 'report',    'label' => 'สรุปยอดการใช้ห้องรายเดือน', 'icon' => 'bi-bar-chart-line', 'url' => 'admin/report.php',      'roles' => ['building_staff', 'admin']],
     ['header' => 'ข้อมูลหลัก'],
     ['key' => 'users',     'label' => 'จัดการผู้ใช้',          'icon' => 'bi-people',          'url' => 'admin/users.php',    'roles' => ['admin']],
     ['key' => 'buildings', 'label' => 'จัดการอาคาร',          'icon' => 'bi-buildings',       'url' => 'admin/buildings.php','roles' => ['admin']],
@@ -304,6 +309,25 @@ function time_range(string $s, string $e): string
         return thai_date($s) . ' · ' . date('H:i', strtotime($s)) . '–' . date('H:i', strtotime($e)) . ' น.';
     }
     return thai_date($s, 'datetime') . ' – ' . thai_date($e, 'datetime');
+}
+/** จำนวนวันที่ใช้ห้อง (การจองหลายวันนับทุกวัน) */
+function booking_days(string $s, string $e): int
+{
+    return max(1, (int)round((strtotime(substr($e, 0, 10)) - strtotime(substr($s, 0, 10))) / 86400) + 1);
+}
+/** ชั่วโมงใช้งานจริง — วันเดียว = ช่วงเวลา · หลายวัน = (เวลาเลิก − เวลาเริ่ม) × จำนวนวัน (ไม่นับช่วงกลางคืน) */
+function booking_hours(string $s, string $e): float
+{
+    $days = booking_days($s, $e);
+    if ($days === 1) return max(0, (strtotime($e) - strtotime($s)) / 3600);
+    $daily = (strtotime('2000-01-01 ' . substr($e, 11)) - strtotime('2000-01-01 ' . substr($s, 11))) / 3600;
+    if ($daily <= 0) $daily = 8; // เวลาเลิกไม่มากกว่าเวลาเริ่ม (ข้ามคืน) → คิดวันละ 8 ชม.
+    return $daily * $days;
+}
+/** จำนวนงานดูแลห้องที่เจ้าหน้าที่ยังไม่กด "รับทราบ" (badge เมนูแจ้งเตือน) */
+function staff_task_count(int $userId): int
+{
+    return (int)db_val("SELECT COUNT(*) FROM booking_staff s JOIN bookings b ON b.id=s.booking_id WHERE s.user_id=? AND s.ack_at IS NULL AND b.status='approved' AND b.end_datetime>=NOW()", [$userId]);
 }
 /** จองต่อเนื่องได้สูงสุดกี่วัน (หน้าขอใช้ห้อง) */
 const MAX_BOOKING_DAYS = 31;

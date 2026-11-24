@@ -131,7 +131,7 @@ require __DIR__ . '/../includes/header.php';
 
 <?php if ($myJobs): ?>
 <div class="card-x mb-4 reveal">
-  <div class="card-x-head"><h5><i class="bi bi-clipboard-check"></i>งานดูแลห้องประชุมที่ได้รับมอบหมาย</h5></div>
+  <div class="card-x-head"><h5><i class="bi bi-clipboard-check"></i>งานดูแลห้องประชุมที่ได้รับมอบหมาย</h5><a class="btn btn-sm btn-soft" href="<?= url('admin/tasks.php') ?>"><i class="bi bi-bell me-1"></i>ไปที่แจ้งเตือน<?php if ($n = staff_task_count((int)$me['id'])): ?> <span class="badge text-bg-danger ms-1"><?= $n ?></span><?php endif; ?></a></div>
   <div class="table-responsive"><table class="table table-x table-hover"><thead><tr><th>วัน-เวลา</th><th>ห้อง</th><th>หัวข้อ</th><th>ผู้ขอใช้</th></tr></thead><tbody>
   <?php foreach ($myJobs as $j): ?><tr><td><?= e(time_range($j['start_datetime'], $j['end_datetime'])) ?></td><td><strong><?= e($j['room_name']) ?></strong><br><small class="text-muted"><?= e($j['building_name']) ?></small></td><td><?= e($j['title']) ?></td><td><?= e($j['requester_name']) ?></td></tr><?php endforeach; ?>
   </tbody></table></div>

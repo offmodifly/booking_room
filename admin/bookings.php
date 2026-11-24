@@ -56,8 +56,9 @@ if (is_post()) {
             $pdo = db();
             $pdo->beginTransaction();
             if ($action === 'approve') db_exec("UPDATE bookings SET status='approved', approved_by=?, approved_at=NOW(), admin_note=? WHERE id=?", [$me['id'], mb_substr(input('admin_note'), 0, 255) ?: null, $id]);
-            db_exec('DELETE FROM booking_staff WHERE booking_id=?', [$id]);
-            foreach ($staff as $sid) db_exec('INSERT INTO booking_staff (booking_id,user_id,assigned_by) VALUES (?,?,?)', [$id, $sid, $me['id']]);
+            // คงสถานะ "รับทราบ/จัดเตรียมแล้ว" ของเจ้าหน้าที่เดิม · ลบเฉพาะคนที่ถูกถอดออก · คนใหม่ได้รับแจ้งเตือน
+            db_exec('DELETE FROM booking_staff WHERE booking_id=? AND user_id NOT IN (' . implode(',', array_fill(0, count($staff), '?')) . ')', array_merge([$id], $staff));
+            foreach ($staff as $sid) db_exec('INSERT IGNORE INTO booking_staff (booking_id,user_id,assigned_by) VALUES (?,?,?)', [$id, $sid, $me['id']]);
             $pdo->commit();
             $names = implode(', ', array_map('full_name', $valid));
             log_action($action === 'approve' ? 'approve' : 'booking', ($action === 'approve' ? "อนุมัติการจอง {$b['booking_no']} (จอง → ไม่ว่าง)" : "เปลี่ยนเจ้าหน้าที่ {$b['booking_no']}") . " · มอบหมาย: $names");
