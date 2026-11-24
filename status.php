@@ -120,8 +120,8 @@ public_header('ตรวจสอบสถานะการจอง', 'status'
                 <dt>ใช้สถานที่เพื่อ</dt><dd><strong><?= e($b['title']) ?></strong></dd>
                 <?php if ($eqLines = booking_equipment_lines($b['equip'] ?? null)): ?><dt>อุปกรณ์ให้จัด</dt><dd><?= e(implode(' · ', $eqLines)) ?></dd><?php endif; ?>
                 <dt>ห้อง</dt><dd><?= e($b['room_name']) ?> · <?= e($b['building_name']) ?> ชั้น <?= (int)$b['floor'] ?></dd>
-                <dt>วันที่</dt><dd><?= e(thai_date($b['start_datetime'], 'long')) ?></dd>
-                <dt>เวลา</dt><dd><?= date('H:i', strtotime($b['start_datetime'])) ?>–<?= date('H:i', strtotime($b['end_datetime'])) ?> น. · <?= (int)$b['attendees'] ?> คน</dd>
+                <dt>วัน-เวลา</dt><dd><?= booking_when_html($b['start_datetime'], $b['end_datetime']) ?></dd>
+                <dt>ผู้เข้าร่วม</dt><dd><?= (int)$b['attendees'] ?> คน</dd>
                 <dt>ผู้ขอใช้</dt><dd><?= e($b['requester_name']) ?><?= $b['department'] ? ' · ' . e($b['department']) : '' ?></dd>
                 <?php if ($b['status'] === 'approved' && $b['staff_names']): ?><dt>เจ้าหน้าที่</dt><dd><i class="bi bi-person-badge me-1"></i><?= e($b['staff_names']) ?></dd><?php endif; ?>
                 <?php if ($b['status'] === 'rejected' && ($rr = reject_reason($b))): ?><dt>เหตุผล</dt><dd class="text-danger"><?= e($rr[1]) ?> <span class="text-muted">(<?= e($rr[0]) ?>)</span></dd><?php endif; ?>

@@ -5,13 +5,14 @@ require __DIR__ . '/includes/public_layout.php';
 
 $rooms = public_rooms();
 $old = $_SESSION['_req_old'] ?? [];
-unset($_SESSION['_req_old']);
+$reqError = $_SESSION['_req_error'] ?? null;
+unset($_SESSION['_req_old'], $_SESSION['_req_error']);
 
 if (is_post()) {
     csrf_check();
-    $old = array_intersect_key($_POST, array_flip(['room_id', 'date', 'start_time', 'end_time', 'requester_name', 'department', 'contact_phone', 'title', 'purpose', 'attendees', 'equip']));
+    $old = array_intersect_key($_POST, array_flip(['room_id', 'date', 'date_end', 'start_time', 'end_time', 'requester_name', 'department', 'contact_phone', 'title', 'purpose', 'attendees', 'equip']));
     try {
-        if (input('website') !== '') throw new RuntimeException('ไม่สามารถส่งคำขอได้');           // honeypot กันบอท
+        if ((string)input('hp_trap_x') !== '') throw new RuntimeException('ระบบตรวจพบการส่งข้อมูลอัตโนมัติ กรุณาโหลดหน้าใหม่แล้วกรอกอีกครั้ง'); // honeypot กันบอท
         if (!rate_hit('request', 5, 3600)) throw new RuntimeException('ส่งคำขอบ่อยเกินไป กรุณาลองใหม่ภายหลัง');
         $ipCount = (int)db_val("SELECT COUNT(*) FROM logs WHERE action='booking' AND user_id IS NULL AND ip=? AND created_at >= NOW() - INTERVAL 1 HOUR", [client_ip()]);
         if ($ipCount >= 10) throw new RuntimeException('มีการส่งคำขอจากเครือข่ายนี้มากเกินไป กรุณาลองใหม่ภายหลัง');
@@ -21,10 +22,14 @@ if (is_post()) {
         if ($room['status'] === 'unavailable') throw new RuntimeException('ห้องนี้ปิดให้บริการชั่วคราว กรุณาเลือกห้องอื่น');
 
         $date = (string)input('date');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{2}:\d{2}$/', (string)input('start_time')) || !preg_match('/^\d{2}:\d{2}$/', (string)input('end_time')))
+        $dateEnd = (string)(input('date_end') ?: $date);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateEnd) || !preg_match('/^\d{2}:\d{2}$/', (string)input('start_time')) || !preg_match('/^\d{2}:\d{2}$/', (string)input('end_time')))
             throw new RuntimeException('กรุณาระบุวันและเวลาให้ครบถ้วน');
+        if ($dateEnd < $date) throw new RuntimeException('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มใช้');
+        if ((strtotime($dateEnd) - strtotime($date)) / 86400 + 1 > MAX_BOOKING_DAYS) throw new RuntimeException('จองต่อเนื่องได้ไม่เกิน ' . MAX_BOOKING_DAYS . ' วัน');
+        // หลายวัน = จองต่อเนื่องตั้งแต่ วันแรก เวลาเริ่ม ถึง วันสุดท้าย เวลาสิ้นสุด (เป็นคำขอเดียว ลงนามครั้งเดียว)
         $start = "$date " . input('start_time') . ':00';
-        $end = "$date " . input('end_time') . ':00';
+        $end = "$dateEnd " . input('end_time') . ':00';
         if ($end <= $start) throw new RuntimeException('เวลาสิ้นสุดต้องมากกว่าเวลาเริ่ม');
         if (strtotime($start) < time()) throw new RuntimeException('ไม่สามารถจองย้อนหลังได้');
         if (strtotime($start) > strtotime('+180 days')) throw new RuntimeException('จองล่วงหน้าได้ไม่เกิน 180 วัน');
@@ -66,7 +71,9 @@ if (is_post()) {
     } catch (Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
         $_SESSION['_req_old'] = $old;
-        flash('error', $e instanceof RuntimeException ? $e->getMessage() : 'ไม่สามารถบันทึกคำขอได้ กรุณาลองใหม่');
+        // บันทึกสาเหตุที่ส่งไม่ผ่านไว้ใน PHP error log (ช่วยตรวจสอบเมื่อผู้ใช้แจ้งว่า "ข้อมูลไม่เข้า")
+        error_log('[request.php] rejected: ' . get_class($e) . ': ' . $e->getMessage() . ($e instanceof RuntimeException ? '' : ' @ ' . $e->getFile() . ':' . $e->getLine()) . ' | ip=' . client_ip());
+        $_SESSION['_req_error'] = $e instanceof RuntimeException ? $e->getMessage() : 'ไม่สามารถบันทึกคำขอได้ กรุณาลองใหม่ (ระบบขัดข้อง)';
         redirect('request.php');
     }
 }
@@ -104,6 +111,8 @@ foreach ($rooms as $r) {
 }
 $selRoom = (int)($old['room_id'] ?? qs('room', 0));
 $selDate = $old['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)qs('date')) ? qs('date') : date('Y-m-d', strtotime('+1 day')));
+$selDateEnd = $old['date_end'] ?? $selDate;
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$selDateEnd) || $selDateEnd < $selDate) $selDateEnd = $selDate;
 $times = [];
 for ($m = 7 * 60; $m <= 21 * 60; $m += 30) $times[] = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
 
@@ -126,7 +135,7 @@ public_header('ขอใช้ห้องประชุม', 'request');
     <div class="ticket">
       <div class="ticket-no"><small>เลขที่คำขอ</small><strong><?= e($done['booking_no']) ?></strong></div>
       <dl class="dl"><dt>ห้อง</dt><dd><?= e($done['room_name']) ?> · <?= e($done['building_name']) ?></dd>
-        <dt>วันเวลา</dt><dd><?= e(thai_date($done['start_datetime'], 'long')) ?><br><?= date('H:i', strtotime($done['start_datetime'])) ?>–<?= date('H:i', strtotime($done['end_datetime'])) ?> น.</dd>
+        <dt>วันเวลา</dt><dd><?= booking_when_html($done['start_datetime'], $done['end_datetime']) ?></dd>
         <dt>ขอใช้สถานที่เพื่อ</dt><dd><?= e($done['title']) ?></dd>
         <?php if ($eqLines = booking_equipment_lines($done['equip'])): ?><dt>อุปกรณ์ให้จัด</dt><dd><?= e(implode(' · ', $eqLines)) ?></dd><?php endif; ?>
         <dt>ผู้ขอใช้</dt><dd><?= e($done['requester_name']) ?></dd>
@@ -146,9 +155,17 @@ public_header('ขอใช้ห้องประชุม', 'request');
     </div>
   </div>
 <?php else: ?>
+  <?php if ($reqError): ?>
+  <div class="alert alert-danger d-flex gap-2 align-items-start reveal" id="reqError" role="alert">
+    <i class="bi bi-exclamation-octagon-fill fs-5"></i>
+    <div><strong>ส่งคำขอไม่สำเร็จ</strong> — <?= e($reqError) ?><div class="small mt-1">ข้อมูลที่กรอกไว้ยังอยู่ครบ กรุณาแก้ไขแล้วลงลายมือชื่อและส่งใหม่อีกครั้ง</div></div>
+  </div>
+  <script>window.__REQ_ERROR = <?= json_encode($reqError, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;</script>
+  <?php endif; ?>
   <form method="post" class="row g-4" id="reqForm" novalidate>
     <?= csrf_field() ?>
-    <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+    <!-- กันบอท: ชื่อช่องไม่ให้ Chrome กรอกอัตโนมัติ (autofill) -->
+    <div class="hp" aria-hidden="true"><input type="text" name="hp_trap_x" tabindex="-1" autocomplete="off" data-lpignore="true" data-1p-ignore value=""></div>
     <div class="col-lg-8">
       <!-- 1. เลือกห้อง -->
       <div class="card-x reveal mb-4"><div class="card-x-head"><h5><span class="step-no">1</span>เลือกห้องประชุม</h5></div>
@@ -169,11 +186,13 @@ public_header('ขอใช้ห้องประชุม', 'request');
       <!-- 2. วันเวลา -->
       <div class="card-x reveal mb-4" style="--i:1"><div class="card-x-head"><h5><span class="step-no">2</span>วันและเวลา</h5></div>
         <div class="card-x-body row g-3">
-          <div class="col-md-4"><label class="form-label">วันที่ใช้ห้อง <span class="text-danger">*</span></label><input type="date" class="form-control" name="date" id="fDate" value="<?= e($selDate) ?>" min="<?= date('Y-m-d') ?>" max="<?= date('Y-m-d', strtotime('+180 days')) ?>" required></div>
-          <div class="col-6 col-md-4"><label class="form-label">เวลาเริ่ม <span class="text-danger">*</span></label><select class="form-select" name="start_time" id="fStart" required><?php foreach (array_slice($times, 0, -1) as $t): ?><option <?= ($old['start_time'] ?? '09:00') === $t ? 'selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
-          <div class="col-6 col-md-4"><label class="form-label">เวลาสิ้นสุด <span class="text-danger">*</span></label><select class="form-select" name="end_time" id="fEnd" required><?php foreach (array_slice($times, 1) as $t): ?><option <?= ($old['end_time'] ?? '12:00') === $t ? 'selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
+          <div class="col-6 col-md-3"><label class="form-label">วันที่เริ่มใช้ <span class="text-danger">*</span></label><input type="date" class="form-control" name="date" id="fDate" data-thai-date value="<?= e($selDate) ?>" min="<?= date('Y-m-d') ?>" max="<?= date('Y-m-d', strtotime('+180 days')) ?>" required></div>
+          <div class="col-6 col-md-3"><label class="form-label">ถึงวันที่ <span class="text-danger">*</span></label><input type="date" class="form-control" name="date_end" id="fDateEnd" data-thai-date value="<?= e($selDateEnd) ?>" min="<?= e($selDate) ?>" max="<?= e(min(date('Y-m-d', strtotime('+180 days')), date('Y-m-d', strtotime($selDate . ' +' . (MAX_BOOKING_DAYS - 1) . ' days')))) ?>" data-max-days="<?= MAX_BOOKING_DAYS ?>" data-hard-max="<?= date('Y-m-d', strtotime('+180 days')) ?>" required></div>
+          <div class="col-6 col-md-3"><label class="form-label">เวลาเริ่ม <span class="text-danger">*</span></label><select class="form-select" name="start_time" id="fStart" required><?php foreach (array_slice($times, 0, -1) as $t): ?><option <?= ($old['start_time'] ?? '09:00') === $t ? 'selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
+          <div class="col-6 col-md-3"><label class="form-label">เวลาสิ้นสุด <span class="text-danger">*</span></label><select class="form-select" name="end_time" id="fEnd" required><?php foreach (array_slice($times, 1) as $t): ?><option <?= ($old['end_time'] ?? '12:00') === $t ? 'selected' : '' ?>><?= $t ?></option><?php endforeach; ?></select></div>
+          <div class="col-12" id="rangeHint" hidden><div class="range-hint"><i class="bi bi-calendar-range"></i><span></span></div></div>
           <div class="col-12">
-            <div class="slot-head"><span class="small fw-semibold">ช่วงเวลาของห้องในวันที่เลือก</span>
+            <div class="slot-head"><span class="small fw-semibold" id="slotTitle">ช่วงเวลาของห้องในวันที่เลือก</span>
               <span class="slot-legend"><i style="--c:#10b981"></i>ว่าง <i style="--c:#f59e0b"></i>จองแล้ว <i style="--c:#ef4444"></i>ไม่ว่าง <i style="--c:#6366f1"></i>ที่คุณเลือก</span></div>
             <div class="slot-bar" id="slotBar"><div class="slot-empty">เลือกห้องเพื่อดูช่วงเวลาว่าง</div></div>
             <div class="slot-scale"><?php for ($h = 7; $h <= 21; $h += 2): ?><span><?= sprintf('%02d:00', $h) ?></span><?php endfor; ?></div>
@@ -186,9 +205,11 @@ public_header('ขอใช้ห้องประชุม', 'request');
         <div class="card-x-body row g-3">
           <div class="col-md-6"><label class="form-label">ชื่อ-นามสกุล <span class="text-danger">*</span></label><input class="form-control" name="requester_name" value="<?= e($old['requester_name'] ?? '') ?>" maxlength="150" required autocomplete="name"></div>
           <div class="col-md-6"><label class="form-label">หน่วยงาน / แผนก / สังกัด</label><input class="form-control" name="department" value="<?= e($old['department'] ?? '') ?>" maxlength="150" placeholder="เช่น แผนกวิชาช่างยนต์ หรือ หน่วยงานภายนอก"></div>
-          <div class="col-md-6"><label class="form-label">เบอร์โทรศัพท์ <span class="text-danger">*</span></label>
-            <div class="input-group"><span class="input-group-text"><i class="bi bi-telephone"></i></span><input class="form-control" name="contact_phone" id="fPhone" value="<?= e($old['contact_phone'] ?? '') ?>" inputmode="tel" maxlength="20" placeholder="08x-xxx-xxxx" required autocomplete="tel"></div>
-            <div class="form-text"><i class="bi bi-info-circle me-1"></i>ใช้เบอร์นี้ตรวจสอบสถานะการจอง และเจ้าหน้าที่จะติดต่อกลับ</div></div>
+          <div class="col-md-6"><label class="form-label" for="fPhone">เบอร์โทรศัพท์ <span class="text-danger">*</span></label>
+            <div class="phone-blocks" data-phone-blocks>
+              <input class="pb-input" name="contact_phone" id="fPhone" value="<?= e($old['contact_phone'] ?? '') ?>" inputmode="numeric" maxlength="16" required autocomplete="tel" aria-describedby="fPhoneHelp">
+            </div>
+            <div class="form-text" id="fPhoneHelp"><i class="bi bi-info-circle me-1"></i>มือถือ 10 หลัก หรือเบอร์บ้าน 9 หลัก · ใช้ตรวจสอบสถานะการจอง และเจ้าหน้าที่จะติดต่อกลับ</div></div>
         </div></div>
 
       <!-- 4. รายละเอียดการประชุม -->
@@ -277,6 +298,10 @@ public_header('ขอใช้ห้องประชุม', 'request');
 </div>
 <script type="application/json" id="roomData"><?= json_encode($roomInfo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 <?php
-public_footer('<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script><script src="' . asset('js/public.js') . '"></script>
+public_footer('<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/th.js"></script>
+<script src="' . asset('js/thaidate.js') . '"></script>
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script><script src="' . asset('js/public.js') . '"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module" src="' . asset('js/request3d.js') . '"></script>');

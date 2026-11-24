@@ -305,6 +305,16 @@ function time_range(string $s, string $e): string
     }
     return thai_date($s, 'datetime') . ' – ' . thai_date($e, 'datetime');
 }
+/** จองต่อเนื่องได้สูงสุดกี่วัน (หน้าขอใช้ห้อง) */
+const MAX_BOOKING_DAYS = 31;
+/** วัน-เวลาการจองแบบ HTML 2 บรรทัด — วันเดียว: "วันพุธที่ 25 … <br>09:00–12:00 น." · หลายวัน: "25 … ถึง 27 … (3 วัน)<br>เริ่ม 09:00 น. · สิ้นสุด 16:00 น." */
+function booking_when_html(string $s, string $e): string
+{
+    $sd = substr($s, 0, 10); $ed = substr($e, 0, 10);
+    if ($sd === $ed) return e(thai_date($s, 'long')) . '<br>' . date('H:i', strtotime($s)) . '–' . date('H:i', strtotime($e)) . ' น.';
+    $days = (int)round((strtotime($ed) - strtotime($sd)) / 86400) + 1;
+    return e(thai_date($s)) . ' ถึง ' . e(thai_date($e)) . " <span class=\"text-muted\">($days วัน)</span><br>เริ่ม " . date('H:i', strtotime($s)) . ' น. · สิ้นสุด ' . date('H:i', strtotime($e)) . ' น.';
+}
 function time_ago(?string $dt): string
 {
     if (!$dt) return '-';
@@ -722,7 +732,9 @@ function phone_valid(string $digits): bool { return (bool)preg_match('/^0\d{8,9}
 function phone_format(string $d): string
 {
     if (strlen($d) === 10) return substr($d, 0, 3) . '-' . substr($d, 3, 3) . '-' . substr($d, 6);
-    if (strlen($d) === 9) return substr($d, 0, 2) . '-' . substr($d, 2, 3) . '-' . substr($d, 5);
+    if (strlen($d) === 9) return str_starts_with($d, '02')
+        ? substr($d, 0, 2) . '-' . substr($d, 2, 3) . '-' . substr($d, 5)   // กรุงเทพฯ 02-xxx-xxxx
+        : substr($d, 0, 3) . '-' . substr($d, 3, 3) . '-' . substr($d, 6);  // ต่างจังหวัด 054-xxx-xxx
     return $d;
 }
 /** จำกัดจำนวนครั้ง (ต่อ session) — คืน false ถ้าเกิน */

@@ -102,6 +102,52 @@
     }
   });
 
+  // ---------- ช่องเบอร์โทรแบบบล็อก (data-phone-blocks) : [0][x][x]-[x][x][x]-[x][x][x][x] ----------
+  document.querySelectorAll('[data-phone-blocks]').forEach(box => {
+    const inp = box.querySelector('input');
+    if (!inp) return;
+    const GROUPS = [3, 3, 4], MAX = 10;
+    const cellsWrap = document.createElement('div');
+    cellsWrap.className = 'pb-cells'; cellsWrap.setAttribute('aria-hidden', 'true');
+    const cells = [];
+    GROUPS.forEach((n, gi) => {
+      if (gi) { const s = document.createElement('span'); s.className = 'pb-sep'; s.textContent = '–'; cellsWrap.appendChild(s); }
+      for (let i = 0; i < n; i++) { const c = document.createElement('span'); c.className = 'pb-cell'; cellsWrap.appendChild(c); cells.push(c); }
+    });
+    const ok = document.createElement('i'); ok.className = 'bi bi-check-circle-fill pb-ok'; cellsWrap.appendChild(ok);
+    box.appendChild(cellsWrap);
+
+    const digitsOf = v => { let d = String(v).replace(/\D/g, ''); if (d.startsWith('66') && d.length >= 11) d = '0' + d.slice(2); return d.slice(0, MAX); };
+    const fmt = d => d.length === 9 && d.startsWith('02') && document.activeElement !== inp
+      ? `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`                 // กรุงเทพฯ 02-xxx-xxxx (ตอนกรอกเสร็จ)
+      : [d.slice(0, 3), d.slice(3, 6), d.slice(6)].filter(Boolean).join('-'); // มือถือ 0xx-xxx-xxxx · ต่างจังหวัด 0xx-xxx-xxx
+    const valid = d => /^0[689]\d{8}$/.test(d) || /^0[2-7]\d{7}$/.test(d);
+    const paint = () => {
+      const d = digitsOf(inp.value), focused = document.activeElement === inp;
+      cells.forEach((c, i) => {
+        c.textContent = d[i] || '';
+        c.classList.toggle('filled', i < d.length);
+        c.classList.toggle('active', focused && i === Math.min(d.length, MAX - 1) && !(d.length === MAX));
+      });
+      const good = valid(d);
+      box.classList.toggle('is-valid', good);
+      box.classList.toggle('is-focus', focused);
+      if (good && inp.classList.contains('is-invalid')) inp.classList.remove('is-invalid');
+    };
+    const sync = () => {
+      const d = digitsOf(inp.value);
+      inp.value = fmt(d);
+      const end = inp.value.length; try { inp.setSelectionRange(end, end); } catch (e) {}
+      paint();
+    };
+    inp.addEventListener('input', sync);
+    inp.addEventListener('focus', () => { sync(); });
+    inp.addEventListener('blur', () => { inp.value = fmt(digitsOf(inp.value)); paint(); });
+    // คลิกที่ไหนในกล่องก็โฟกัส + เคอร์เซอร์ไปท้ายเสมอ (ป้อนต่อ/ลบจากท้าย)
+    inp.addEventListener('click', () => { const end = inp.value.length; try { inp.setSelectionRange(end, end); } catch (e) {} });
+    inp.value = fmt(digitsOf(inp.value)); paint();
+  });
+
   // ---------- helpers exposed ----------
   window.escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   window.cssVar = n => getComputedStyle(root).getPropertyValue(n).trim();
