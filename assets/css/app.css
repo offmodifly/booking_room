@@ -741,3 +741,12 @@ span.flatpickr-weekday{color:var(--muted);font-weight:500}
 #usageForm{flex-wrap:nowrap!important}
 #usageForm .th-date-alt{width:150px;flex:0 0 150px}
 @media (max-width:575.98px){#usageForm{flex-wrap:wrap!important}}
+/* จดจำการเข้าสู่ระบบ */
+.remember-me{display:flex;gap:.6rem;align-items:flex-start;padding:.6rem .75rem;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer;margin:.2rem 0 .4rem}
+.remember-me input{margin-top:.2rem;flex:0 0 auto}
+.remember-me span{display:flex;flex-direction:column;line-height:1.35}
+.remember-me strong{font-size:.9rem}.remember-me small{color:var(--muted);font-size:.76rem}
+.remember-me:has(input:checked){border-color:color-mix(in srgb,var(--brand) 50%,var(--line));background:color-mix(in srgb,var(--brand) 7%,var(--surface))}
+.device-list li{display:flex;gap:.75rem;align-items:center;padding:.55rem 0;border-bottom:1px solid var(--line)}
+.device-list li:last-child{border-bottom:0}
+.device-list li>i{font-size:1.3rem;color:var(--brand);width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:color-mix(in srgb,var(--brand) 10%,transparent)}

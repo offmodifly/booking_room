@@ -30,8 +30,13 @@ if (is_post()) {
             if (strlen((string)input('new')) < 8) throw new RuntimeException('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
             if (input('new') !== input('confirm')) throw new RuntimeException('ยืนยันรหัสผ่านไม่ตรงกัน');
             db_exec('UPDATE users SET password_hash=? WHERE id=?', [password_hash((string)input('new'), PASSWORD_DEFAULT), $me['id']]);
-            log_action('profile', 'เปลี่ยนรหัสผ่าน');
-            flash('success', 'เปลี่ยนรหัสผ่านเรียบร้อย');
+            $n = remember_revoke_user((int)$me['id'], true); // อุปกรณ์อื่นที่จดจำไว้ต้องเข้าสู่ระบบใหม่
+            log_action('profile', 'เปลี่ยนรหัสผ่าน' . ($n ? " · ยกเลิกการจดจำการเข้าสู่ระบบ $n อุปกรณ์" : ''));
+            flash('success', 'เปลี่ยนรหัสผ่านเรียบร้อย' . ($n ? " · อุปกรณ์อื่น $n เครื่องต้องเข้าสู่ระบบใหม่" : ''));
+        } elseif (input('action') === 'forget_devices') {
+            $n = remember_revoke_user((int)$me['id'], (bool)input('keep_current'));
+            log_action('profile', "ยกเลิกการจดจำการเข้าสู่ระบบ $n อุปกรณ์");
+            flash('success', "ยกเลิกการเข้าสู่ระบบอัตโนมัติแล้ว $n อุปกรณ์");
         }
     } catch (Throwable $e) { flash('error', e($e->getMessage())); }
     redirect('admin/profile.php');
@@ -81,6 +86,37 @@ require __DIR__ . '/../includes/header.php';
         <div class="col-md-4"><label class="form-label">ยืนยันรหัสผ่านใหม่</label><input class="form-control" type="password" name="confirm" minlength="8" required autocomplete="new-password"></div>
         <div class="col-12 text-end"><button class="btn btn-primary"><i class="bi bi-shield-check me-1"></i>เปลี่ยนรหัสผ่าน</button></div>
       </div></form>
+    <?php
+      $devices = db_all('SELECT * FROM remember_tokens WHERE user_id=? AND expires_at > NOW() ORDER BY COALESCE(last_used_at, created_at) DESC', [$me['id']]);
+      $curTok = remember_current_token();
+      $uaLabel = function (string $ua): string {
+          $b = preg_match('/Edg\//', $ua) ? 'Edge' : (preg_match('/Chrome\//', $ua) ? 'Chrome' : (preg_match('/Firefox\//', $ua) ? 'Firefox' : (preg_match('/Safari\//', $ua) ? 'Safari' : 'เบราว์เซอร์')));
+          $o = preg_match('/Android/', $ua) ? 'Android' : (preg_match('/iPhone|iPad/', $ua) ? 'iOS' : (preg_match('/Windows/', $ua) ? 'Windows' : (preg_match('/Mac OS/', $ua) ? 'macOS' : (preg_match('/Linux/', $ua) ? 'Linux' : ''))));
+          return trim("$b · $o", ' ·');
+      };
+    ?>
+    <div class="card-x reveal mt-4" style="--i:3">
+      <div class="card-x-head"><h5><i class="bi bi-phone-flip"></i>เข้าสู่ระบบอัตโนมัติ (จดจำการเข้าสู่ระบบ)</h5><span class="text-muted small"><?= count($devices) ?> อุปกรณ์</span></div>
+      <div class="card-x-body">
+        <?php if (!$devices): ?>
+          <p class="text-muted mb-0"><i class="bi bi-info-circle me-1"></i>ยังไม่มีอุปกรณ์ที่จดจำการเข้าสู่ระบบ — ติ๊ก "จดจำการเข้าสู่ระบบ" ที่หน้าเข้าสู่ระบบเพื่อเข้าใช้งานอัตโนมัติ <?= REMEMBER_DAYS ?> วัน</p>
+        <?php else: ?>
+          <ul class="list-unstyled mb-3 device-list">
+            <?php foreach ($devices as $d): $isCur = $curTok && (int)$curTok['id'] === (int)$d['id']; ?>
+              <li><i class="bi <?= preg_match('/Android|iPhone|iPad|Mobile/', $d['user_agent']) ? 'bi-phone' : 'bi-laptop' ?>"></i>
+                <div><strong><?= e($uaLabel($d['user_agent'])) ?></strong><?= $isCur ? ' <span class="badge text-bg-success">เครื่องนี้</span>' : '' ?>
+                  <small class="d-block text-muted">ใช้ล่าสุด <?= e(thai_date($d['last_used_at'] ?: $d['created_at'], 'datetime')) ?> · IP <?= e($d['ip']) ?> · หมดอายุ <?= e(thai_date($d['expires_at'])) ?></small></div></li>
+            <?php endforeach; ?>
+          </ul>
+          <div class="d-flex flex-wrap gap-2 justify-content-end">
+            <?php if ($curTok && count($devices) > 1): ?>
+              <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="forget_devices"><input type="hidden" name="keep_current" value="1"><button class="btn btn-soft btn-sm"><i class="bi bi-x-circle me-1"></i>ยกเลิกอุปกรณ์อื่นทั้งหมด</button></form>
+            <?php endif; ?>
+            <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="forget_devices"><button class="btn btn-outline-danger btn-sm"><i class="bi bi-shield-x me-1"></i>ยกเลิกทุกอุปกรณ์</button></form>
+          </div>
+        <?php endif; ?>
+      </div>
+    </div>
   </div>
 </div>
 <script>

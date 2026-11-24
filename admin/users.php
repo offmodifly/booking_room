@@ -37,6 +37,7 @@ if (is_post()) {
                 if ($pw !== '') { $set .= ',password_hash=?'; $vals[] = password_hash($pw, PASSWORD_DEFAULT); }
                 $vals[] = $id;
                 db_exec("UPDATE users SET $set WHERE id=?", $vals);
+                if ($pw !== '' || !$data['is_active']) remember_revoke_user($id); // เปลี่ยนรหัส/ระงับบัญชี → ยกเลิกเข้าสู่ระบบอัตโนมัติทุกเครื่อง
                 log_action('user', "แก้ไขผู้ใช้ {$data['username']} (" . ROLES[$data['role']]['label'] . ')' . ($pw !== '' ? ' + เปลี่ยนรหัสผ่าน' : ''));
                 flash('success', 'บันทึกข้อมูลผู้ใช้เรียบร้อย');
             } else {
@@ -49,6 +50,7 @@ if (is_post()) {
             if ($id === (int)$me['id']) throw new RuntimeException('ไม่สามารถระงับบัญชีของตนเองได้');
             db_exec('UPDATE users SET is_active = 1 - is_active WHERE id=?', [$id]);
             $u = db_one('SELECT username,is_active FROM users WHERE id=?', [$id]);
+            if (!$u['is_active']) remember_revoke_user($id);
             log_action('user', ($u['is_active'] ? 'เปิดใช้งาน' : 'ระงับ') . "บัญชี {$u['username']}");
             json_out(['ok' => true, 'active' => (int)$u['is_active']]);
         } elseif ($action === 'delete') {

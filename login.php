@@ -17,7 +17,8 @@ if (is_post()) {
             unset($_SESSION['login_fail'], $_SESSION['login_lock']);
             if (password_needs_rehash($u['password_hash'], PASSWORD_DEFAULT)) db_exec('UPDATE users SET password_hash=? WHERE id=?', [password_hash(input('password'), PASSWORD_DEFAULT), $u['id']]);
             db_exec('UPDATE users SET last_login = NOW() WHERE id = ?', [$u['id']]);
-            log_action('login', 'เข้าสู่ระบบสำเร็จ', $u);
+            if (input('remember')) remember_issue((int)$u['id']);
+            log_action('login', 'เข้าสู่ระบบสำเร็จ' . (input('remember') ? ' (จดจำการเข้าสู่ระบบ ' . REMEMBER_DAYS . ' วัน)' : ''), $u);
             flash('success', 'ยินดีต้อนรับ ' . full_name($u));
             $next = (string)qs('next');
             if ($next && str_starts_with($next, BASE_URL . '/') && !str_contains($next, '//') && !str_contains($next, '\\')) redirect($next);
@@ -70,6 +71,10 @@ if (is_post()) {
         <div class="mb-3"><label class="form-label">ชื่อผู้ใช้</label><div class="field"><i class="bi bi-person"></i><input class="form-control" name="username" value="<?= e(input('username')) ?>" required autofocus></div></div>
         <div class="mb-3"><label class="form-label">รหัสผ่าน</label><div class="field"><i class="bi bi-lock"></i><input class="form-control" type="password" name="password" id="pw" required>
           <button type="button" class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-1 text-muted" onclick="const p=document.getElementById('pw');p.type=p.type==='password'?'text':'password';this.firstElementChild.classList.toggle('bi-eye');this.firstElementChild.classList.toggle('bi-eye-slash')"><i class="bi bi-eye"></i></button></div></div>
+        <label class="remember-me">
+          <input class="form-check-input" type="checkbox" name="remember" value="1" <?= input('remember') ? 'checked' : '' ?>>
+          <span><strong>จดจำการเข้าสู่ระบบ</strong><small>เข้าสู่ระบบอัตโนมัติในเครื่องนี้ <?= REMEMBER_DAYS ?> วัน · ไม่ควรเลือกบนเครื่องสาธารณะ</small></span>
+        </label>
         <button class="btn btn-primary w-100 py-2 mt-2"><i class="bi bi-box-arrow-in-right me-1"></i>เข้าสู่ระบบ</button>
       </form>
       <a class="guest-cta mt-4" href="<?= url('request.php') ?>"><i class="bi bi-calendar-plus"></i><span><strong>ต้องการขอใช้ห้องประชุม?</strong><small>ไม่ต้องเข้าสู่ระบบ กรอกแบบฟอร์มได้เลย · <span class="text-decoration-underline">ตรวจสอบสถานะด้วยเบอร์โทร</span></small></span><i class="bi bi-arrow-right ms-auto"></i></a>

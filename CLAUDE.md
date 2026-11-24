@@ -66,6 +66,11 @@
   - Display with `booking_when_html()` / `time_range()`.
   - For usage statistics use `booking_days()` / `booking_hours()`: daily hours × days, never the raw span.
 - Staff assignment (`admin/bookings.php`) upserts `booking_staff` and only removes people taken off the list. This keeps existing `ack_at` / `done_at`.
+- "จดจำการเข้าสู่ระบบ" (auto-login, `REMEMBER_DAYS` = 30):
+  - The `NTC_REMEMBER` cookie holds `selector:validator`. `remember_tokens` stores only `sha256(validator)`.
+  - `current_user()` calls `remember_autologin()` when the session has no user.
+  - Logout calls `remember_clear()`.
+  - A password change or account suspension must call `remember_revoke_user()`.
 - Phone numbers: `phone_digits()` to store and compare, `phone_format()` to display (mobile `0xx-xxx-xxxx`, Bangkok `02-xxx-xxxx`, other landlines `0xx-xxx-xxx`).
 - A room with bookings cannot be deleted (guard in `admin/rooms.php`). Use status "ไม่ว่าง" instead, or clear its bookings after a `db_backup()`.
 - Log every admin action with `log_action(type, message)`. Types are listed in `LOG_ACTIONS`.

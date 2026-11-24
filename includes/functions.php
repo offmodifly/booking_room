@@ -189,12 +189,71 @@ function current_user(): ?array
     static $loaded = false, $u = null;
     if (!$loaded) {
         $loaded = true;
+        if (empty($_SESSION['uid']) && PHP_SAPI !== 'cli') remember_autologin(); // เข้าสู่ระบบอัตโนมัติจากคุกกี้ "จดจำการเข้าสู่ระบบ"
         if (!empty($_SESSION['uid'])) {
             $u = db_one('SELECT * FROM users WHERE id = ? AND is_active = 1', [$_SESSION['uid']]);
             if (!$u) unset($_SESSION['uid']);
         }
     }
     return $u;
+}
+
+// ---------------------------------------------------------------- จดจำการเข้าสู่ระบบ (เข้าสู่ระบบอัตโนมัติ)
+// คุกกี้ = selector:validator · ฐานข้อมูลเก็บเฉพาะ sha256(validator) → ขโมยฐานข้อมูลไปก็ใช้เข้าระบบไม่ได้
+const REMEMBER_COOKIE = 'NTC_REMEMBER';
+const REMEMBER_DAYS = 30;
+
+function remember_set_cookie(string $value, int $expires): void
+{
+    if (PHP_SAPI === 'cli' || headers_sent()) return;
+    setcookie(REMEMBER_COOKIE, $value, [
+        'expires' => $expires, 'path' => (BASE_URL ?: '') . '/', 'httponly' => true, 'samesite' => 'Lax',
+        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    ]);
+}
+/** ออก token ใหม่ให้อุปกรณ์นี้ (เรียกหลังเข้าสู่ระบบสำเร็จ เมื่อผู้ใช้ติ๊ก "จดจำการเข้าสู่ระบบ") */
+function remember_issue(int $userId): void
+{
+    $selector = bin2hex(random_bytes(12));
+    $validator = bin2hex(random_bytes(32));
+    $exp = time() + REMEMBER_DAYS * 86400;
+    db_exec('INSERT INTO remember_tokens (user_id, selector, validator_hash, user_agent, ip, expires_at) VALUES (?,?,?,?,?,?)',
+        [$userId, $selector, hash('sha256', $validator), mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255), client_ip(), date('Y-m-d H:i:s', $exp)]);
+    db_exec('DELETE FROM remember_tokens WHERE expires_at < NOW()');
+    remember_set_cookie("$selector:$validator", $exp);
+}
+/** อ่าน token จากคุกกี้ → แถวในฐานข้อมูล (หรือ null ถ้าไม่ถูกต้อง/หมดอายุ) */
+function remember_current_token(): ?array
+{
+    $raw = (string)($_COOKIE[REMEMBER_COOKIE] ?? '');
+    if (!preg_match('/^([a-f0-9]{24}):([a-f0-9]{64})$/', $raw, $m)) return null;
+    $t = db_one('SELECT * FROM remember_tokens WHERE selector = ? AND expires_at > NOW()', [$m[1]]);
+    return $t && hash_equals($t['validator_hash'], hash('sha256', $m[2])) ? $t : null;
+}
+function remember_autologin(): void
+{
+    if (empty($_COOKIE[REMEMBER_COOKIE])) return;
+    $t = remember_current_token();
+    $u = $t ? db_one('SELECT * FROM users WHERE id = ? AND is_active = 1', [$t['user_id']]) : null;
+    if (!$u) { remember_set_cookie('', time() - 3600); return; } // token ใช้ไม่ได้/บัญชีถูกระงับ → ลบคุกกี้
+    session_regenerate_id(true);
+    $_SESSION['uid'] = (int)$u['id'];
+    db_exec('UPDATE remember_tokens SET last_used_at = NOW(), ip = ? WHERE id = ?', [client_ip(), $t['id']]);
+    db_exec('UPDATE users SET last_login = NOW() WHERE id = ?', [$u['id']]);
+    log_action('login', 'เข้าสู่ระบบอัตโนมัติ (จดจำการเข้าสู่ระบบ)', $u);
+}
+/** ออกจากระบบบนอุปกรณ์นี้: ลบ token + คุกกี้ */
+function remember_clear(): void
+{
+    if ($t = remember_current_token()) db_exec('DELETE FROM remember_tokens WHERE id = ?', [$t['id']]);
+    remember_set_cookie('', time() - 3600);
+}
+/** ยกเลิกการจดจำทุกอุปกรณ์ของผู้ใช้ (เช่น เปลี่ยนรหัสผ่าน) — $keepCurrent = คงอุปกรณ์ที่ใช้อยู่ไว้ */
+function remember_revoke_user(int $userId, bool $keepCurrent = false): int
+{
+    $cur = $keepCurrent ? remember_current_token() : null;
+    if ($cur && (int)$cur['user_id'] === $userId) return db_exec('DELETE FROM remember_tokens WHERE user_id = ? AND id <> ?', [$userId, $cur['id']]);
+    return db_exec('DELETE FROM remember_tokens WHERE user_id = ?', [$userId]);
 }
 function require_login(): void
 {
